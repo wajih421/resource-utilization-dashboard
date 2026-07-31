@@ -1,12 +1,11 @@
+// lib/supabase/middleware.ts
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// Called from the root middleware.ts on every request. Keeps the Supabase
-// session cookie fresh so a logged-in user doesn't get randomly signed out,
-// and gives us `user` here so the root middleware can decide where to
-// redirect based on role.
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,9 +19,11 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({ request });
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            response.cookies.set(name, value, options)
           );
         },
       },
@@ -33,5 +34,49 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  return { supabaseResponse, user };
+  const path = request.nextUrl.pathname;
+  const isAuthRoute = path.startsWith("/login") || path.startsWith("/set-password");
+  const isManagerRoute = path.startsWith("/manager");
+  const isResourceRoute = path.startsWith("/resource");
+
+  // not logged in -> block protected routes
+  if (!user && (isManagerRoute || isResourceRoute)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // logged in -> figure out role and enforce it
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const role = profile?.role;
+
+    // logged-in user visiting login/set-password -> send to their dashboard
+    if (isAuthRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = role === "manager" ? "/manager/dashboard" : "/resource/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    // resource trying to access manager routes
+    if (isManagerRoute && role !== "manager") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/resource/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    // manager trying to access resource routes
+    if (isResourceRoute && role !== "resource") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/manager/dashboard";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  return response;
 }
