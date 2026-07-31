@@ -26,7 +26,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Login fail ho gaya");
+        setError(data.error || "Login failed");
         setLoading(false);
         return;
       }
@@ -38,7 +38,7 @@ export default function LoginPage() {
 
       router.push(data.role === "manager" ? "/manager/dashboard" : "/resource/dashboard");
     } catch {
-      setError("Server se connect nahi ho paya");
+      setError("server connection lost");
       setLoading(false);
     }
   }

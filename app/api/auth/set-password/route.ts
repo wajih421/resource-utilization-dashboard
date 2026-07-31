@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     if (updateErr) {
       console.error("Password update failed:", updateErr.message);
       return NextResponse.json(
-        { error: "Password set nahi ho paya, dobara try karo" },
+        { error: "Password doesn't get set ! Try again" },
         { status: 500 }
       );
     }
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("set-password route error:", err);
     return NextResponse.json(
-      { error: "Kuch galat ho gaya, dobara try karo" },
+      { error: "Some unexpected error happened !! Try again" },
       { status: 500 }
     );
   }

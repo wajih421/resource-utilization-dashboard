@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
     if (!employeeId || !password) {
       return NextResponse.json(
-        { error: "Employee ID aur password dono zaroori hain" },
+        { error: "Both Employee ID and Password are Mandatory" },
         { status: 400 }
       );
     }
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json(
-        { error: "Employee ID ya password galat hai" },
+        { error: "Employee ID or Password is wrong" },
         { status: 401 }
       );
     }
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
     if (profileErr || !profile) {
       return NextResponse.json(
-        { error: "Profile nahi mili, admin se contact karo" },
+        { error: "Cannot Find the profile! Contact admin plz" },
         { status: 404 }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: "Kuch galat ho gaya, dobara try karo" },
+      { error: "Some unexpected error happened! Try again " },
       { status: 500 }
     );
   }
