@@ -1,7 +1,7 @@
 // app/resource/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getUtilizationStatus, getStatusColor } from "@/lib/utils/utilization";
 import AttendanceWidget from "../../../components/attendance/AttendanceWidget";
 
@@ -15,34 +15,25 @@ type WorkLog = {
   tasks: { name: string } | null;
 };
 
-export default function ResourceDashboardPage() {
-  const [logs, setLogs] = useState<WorkLog[]>([]);
-  const [totalHours, setTotalHours] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+type TodaySummary = { logs: WorkLog[]; totalHours: number; date: string };
 
+async function fetchTodaySummary(date: string): Promise<TodaySummary> {
+  const res = await fetch(`/api/resource/today-summary?date=${date}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load dashboard");
+  return data;
+}
+
+export default function ResourceDashboardPage() {
   const today = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
-    async function loadSummary() {
-      try {
-        const res = await fetch(`/api/resource/today-summary?date=${today}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to load dashboard");
-          return;
-        }
-        setLogs(data.logs);
-        setTotalHours(data.totalHours);
-      } catch {
-        setError("Could not connect to server");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadSummary();
-  }, [today]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["resource-today-summary", today],
+    queryFn: () => fetchTodaySummary(today),
+  });
 
+  const logs = data?.logs ?? [];
+  const totalHours = data?.totalHours ?? 0;
   const status = getUtilizationStatus(totalHours);
   const statusColor = getStatusColor(status);
 
@@ -51,10 +42,10 @@ export default function ResourceDashboardPage() {
       <h1 className="text-2xl font-semibold mb-1">My Dashboard</h1>
       <p className="text-gray-500 mb-6">{today}</p>
 
-      {loading ? (
+      {isLoading ? (
         <p className="text-gray-500">Loading...</p>
       ) : error ? (
-        <p className="text-red-600">{error}</p>
+        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load dashboard"}</p>
       ) : (
         <>
           <div className="mb-6">
@@ -78,7 +69,7 @@ export default function ResourceDashboardPage() {
             </div>
           </div>
 
-          <h2 className="text-lg font-semibold mb-2">Today's Submitted Work</h2>
+          <h2 className="text-lg font-semibold mb-2">Today&apos;s Submitted Work</h2>
 
           {logs.length === 0 ? (
             <p className="text-gray-500">Abhi tak koi work submit nahi kiya aaj.</p>

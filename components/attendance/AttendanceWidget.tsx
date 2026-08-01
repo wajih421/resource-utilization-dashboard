@@ -1,7 +1,7 @@
 // components/attendance/AttendanceWidget.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Attendance = {
   sign_in_time: string | null;
@@ -25,51 +25,38 @@ const statusColor: Record<string, string> = {
   on_leave: "text-blue-600 bg-blue-50",
 };
 
+async function fetchAttendance(): Promise<Attendance | null> {
+  const res = await fetch("/api/resource/attendance");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load attendance");
+  return data.attendance;
+}
+
 export default function AttendanceWidget() {
-  const [attendance, setAttendance] = useState<Attendance | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
 
-  async function loadAttendance() {
-    try {
-      const res = await fetch("/api/resource/attendance");
-      const data = await res.json();
-      if (res.ok) setAttendance(data.attendance);
-    } catch {
-      // silent fail on initial load, widget will just show sign-in button
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { data: attendance, isLoading } = useQuery({
+    queryKey: ["resource-attendance"],
+    queryFn: fetchAttendance,
+  });
 
-  useEffect(() => {
-    loadAttendance();
-  }, []);
-
-  async function handleAction(action: "sign-in" | "sign-out") {
-    setBusy(true);
-    setError("");
-    try {
+  const mutation = useMutation({
+    mutationFn: async (action: "sign-in" | "sign-out") => {
       const res = await fetch("/api/resource/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Action failed");
-        return;
-      }
-      await loadAttendance();
-    } catch {
-      setError("Could not connect to server");
-    } finally {
-      setBusy(false);
-    }
-  }
+      if (!res.ok) throw new Error(data.error || "Action failed");
+      return data.attendance as Attendance;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["resource-attendance"], updated);
+    },
+  });
 
-  if (loading) {
+  if (isLoading) {
     return <div className="bg-white rounded-lg shadow p-4 text-gray-500">Loading...</div>;
   }
 
@@ -89,8 +76,8 @@ export default function AttendanceWidget() {
 
       <div className="flex gap-2">
         <button
-          onClick={() => handleAction("sign-in")}
-          disabled={busy || !!attendance?.sign_in_time}
+          onClick={() => mutation.mutate("sign-in")}
+          disabled={mutation.isPending || !!attendance?.sign_in_time}
           className="bg-green-600 text-white rounded px-3 py-1.5 text-sm disabled:opacity-40"
         >
           {attendance?.sign_in_time
@@ -98,8 +85,8 @@ export default function AttendanceWidget() {
             : "Sign In"}
         </button>
         <button
-          onClick={() => handleAction("sign-out")}
-          disabled={busy || !attendance?.sign_in_time || !!attendance?.sign_out_time}
+          onClick={() => mutation.mutate("sign-out")}
+          disabled={mutation.isPending || !attendance?.sign_in_time || !!attendance?.sign_out_time}
           className="bg-gray-700 text-white rounded px-3 py-1.5 text-sm disabled:opacity-40"
         >
           {attendance?.sign_out_time
@@ -108,7 +95,11 @@ export default function AttendanceWidget() {
         </button>
       </div>
 
-      {error && <p className="text-red-600 text-xs mt-2">{error}</p>}
+      {mutation.isError && (
+        <p className="text-red-600 text-xs mt-2">
+          {mutation.error instanceof Error ? mutation.error.message : "Action failed"}
+        </p>
+      )}
     </div>
   );
 }

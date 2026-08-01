@@ -1,7 +1,8 @@
 // app/resource/submit-work/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Project = { id: string; name: string };
 type Task = {
@@ -12,90 +13,43 @@ type Task = {
   task_categories: { id: string; name: string } | null;
 };
 
+async function fetchProjects(): Promise<Project[]> {
+  const res = await fetch("/api/resource/projects");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load projects");
+  return data.projects;
+}
+
+async function fetchTasks(projectId: string): Promise<Task[]> {
+  const res = await fetch(`/api/resource/tasks?projectId=${projectId}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load tasks");
+  return data.tasks;
+}
+
 export default function SubmitWorkPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const queryClient = useQueryClient();
 
   const [projectId, setProjectId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [workDayType, setWorkDayType] = useState<"regular" | "weekend">("regular");
   const [unitsCompleted, setUnitsCompleted] = useState("1");
-
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [loadingTasks, setLoadingTasks] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // load assigned projects on mount
-  useEffect(() => {
-    async function loadProjects() {
-      try {
-        const res = await fetch("/api/resource/projects");
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to load projects");
-          return;
-        }
-        setProjects(data.projects);
-      } catch {
-        setError("Could not connect to server");
-      } finally {
-        setLoadingProjects(false);
-      }
-    }
-    loadProjects();
-  }, []);
+  const { data: projects = [], isLoading: loadingProjects, error: projectsError } = useQuery({
+    queryKey: ["resource-projects"],
+    queryFn: fetchProjects,
+  });
 
-  // load tasks whenever project changes
-  useEffect(() => {
-    if (!projectId) {
-      setTasks([]);
-      setTaskId("");
-      return;
-    }
+  const { data: tasks = [], isLoading: loadingTasks, error: tasksError } = useQuery({
+    queryKey: ["resource-tasks", projectId],
+    queryFn: () => fetchTasks(projectId),
+    enabled: !!projectId,
+  });
 
-    async function loadTasks() {
-      setLoadingTasks(true);
-      setTaskId("");
-      try {
-        const res = await fetch(`/api/resource/tasks?projectId=${projectId}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to load tasks");
-          return;
-        }
-        setTasks(data.tasks);
-      } catch {
-        setError("Could not connect to server");
-      } finally {
-        setLoadingTasks(false);
-      }
-    }
-    loadTasks();
-  }, [projectId]);
-
-  const selectedTask = tasks.find((t) => t.id === taskId);
-  const calculatedHours =
-    selectedTask && unitsCompleted
-      ? (Number(selectedTask.default_hours) * Number(unitsCompleted)).toFixed(2)
-      : "0";
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setSuccessMsg("");
-
-    if (!projectId || !taskId) {
-      setError("Project aur Task select karo");
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
+  const submitMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/work-logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,24 +61,40 @@ export default function SubmitWorkPage() {
           unitsCompleted: Number(unitsCompleted),
         }),
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Submit nahi ho paya");
-        setSubmitting(false);
-        return;
-      }
-
+      if (!res.ok) throw new Error(data.error || "Submit nahi ho paya");
+      return data;
+    },
+    onSuccess: (data) => {
       setSuccessMsg(`Submit ho gaya! Total Hours: ${data.totalHours}`);
       setTaskId("");
       setUnitsCompleted("1");
-    } catch {
-      setError("Server se connect nahi ho paya");
-    } finally {
-      setSubmitting(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["resource-today-summary"] });
+    },
+  });
+
+  function handleProjectChange(value: string) {
+    setProjectId(value);
+    setTaskId("");
   }
+
+  const selectedTask = tasks.find((t) => t.id === taskId);
+  const calculatedHours =
+    selectedTask && unitsCompleted
+      ? (Number(selectedTask.default_hours) * Number(unitsCompleted)).toFixed(2)
+      : "0";
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSuccessMsg("");
+
+    if (!projectId || !taskId) {
+      return;
+    }
+    submitMutation.mutate();
+  }
+
+  const error = projectsError || tasksError || submitMutation.error;
 
   return (
     <div className="max-w-lg">
@@ -165,7 +135,7 @@ export default function SubmitWorkPage() {
             <label className="block text-sm font-medium mb-1">Project</label>
             <select
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={(e) => handleProjectChange(e.target.value)}
               className="w-full border rounded px-3 py-2"
               required
             >
@@ -220,15 +190,19 @@ export default function SubmitWorkPage() {
             </div>
           )}
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {error && (
+            <p className="text-red-600 text-sm">
+              {error instanceof Error ? error.message : "Something went wrong"}
+            </p>
+          )}
           {successMsg && <p className="text-green-600 text-sm">{successMsg}</p>}
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitMutation.isPending}
             className="w-full bg-blue-600 text-white rounded py-2 font-medium disabled:opacity-50"
           >
-            {submitting ? "Submitting..." : "Submit Work"}
+            {submitMutation.isPending ? "Submitting..." : "Submit Work"}
           </button>
         </form>
       )}
