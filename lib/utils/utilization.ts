@@ -7,12 +7,42 @@ export type UtilizationStatus =
   | "Abnormally Utilized"
   | "Not Filled";
 
-export function getUtilizationStatus(totalHours: number): UtilizationStatus {
+export type UtilizationThresholds = {
+  lessUtilizedMax: number;
+  fullyUtilizedMax: number;
+  highlyUtilizedMax: number;
+};
+
+// Mirrors the column defaults on utilization_settings (a single-row config
+// table) — used only as a fallback if that row can't be read, so the
+// dashboard degrades gracefully instead of erroring out entirely.
+export const DEFAULT_DAILY_CAPACITY_HOURS = 8;
+export const DEFAULT_UTILIZATION_THRESHOLDS: UtilizationThresholds = {
+  lessUtilizedMax: 6,
+  fullyUtilizedMax: 8,
+  highlyUtilizedMax: 10,
+};
+
+// Thresholds are manager-configurable (utilization_settings table) rather
+// than hard-coded, since the exact boundaries depend on workshop policy.
+// Boundaries are in absolute hours, not percentages: with the default 8h
+// daily capacity, "Fully Utilized" (6-8h) roughly tracks 75-100% and
+// "Highly Utilized" (8-10h) roughly tracks 100-125%, but the classification
+// itself always compares against hours, not the derived percentage.
+export function getUtilizationStatus(
+  totalHours: number,
+  thresholds: UtilizationThresholds = DEFAULT_UTILIZATION_THRESHOLDS
+): UtilizationStatus {
   if (totalHours <= 0) return "Not Filled";
-  if (totalHours < 6) return "Less Utilized";
-  if (totalHours <= 8) return "Fully Utilized";
-  if (totalHours <= 10) return "Highly Utilized";
+  if (totalHours < thresholds.lessUtilizedMax) return "Less Utilized";
+  if (totalHours <= thresholds.fullyUtilizedMax) return "Fully Utilized";
+  if (totalHours <= thresholds.highlyUtilizedMax) return "Highly Utilized";
   return "Abnormally Utilized";
+}
+
+export function getUtilizationPercent(totalHours: number, dailyCapacityHours: number): number {
+  if (dailyCapacityHours <= 0) return 0;
+  return (totalHours / dailyCapacityHours) * 100;
 }
 
 export function getStatusColor(status: UtilizationStatus): string {
