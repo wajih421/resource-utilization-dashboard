@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ROT Workshop Resource Utilization Dashboard
+
+A resource utilization and productivity tracking platform for the ROT
+Workshop, replacing manual spreadsheet-based daily reporting. Resources log
+task work against assigned projects; managers get a live utilization
+dashboard, historical reports, attendance tracking, and configuration tools.
+
+See [`docs/SRS.md`](docs/SRS.md) for the full requirements spec this was
+built against, and [`CLAUDE.md`](CLAUDE.md) for implementation notes and
+decisions.
+
+## Stack
+
+Next.js 16 (App Router, TypeScript) · React 19 · Supabase (Postgres + Auth) ·
+TanStack React Query · Tailwind CSS · Zod · Vitest
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). You'll be redirected to
+`/login`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Environment variables (`.env.local`):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm run build` / `npm start` | Production build / start |
+| `npm run lint` | ESLint |
+| `npm test` | Run the Vitest suite once |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run seed:auth-users` | Create Supabase Auth users + profiles for any resource missing one |
+| `npm run import:master-data -- <file.xlsx> --dry-run` | Import Excel master data (resources + tasks) — see [`docs/EXCEL_IMPORT.md`](docs/EXCEL_IMPORT.md) |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Docs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- [`docs/SRS.md`](docs/SRS.md) — the requirements spec (source of truth)
+- [`docs/DATABASE.md`](docs/DATABASE.md) — schema reference + RLS notes
+- [`docs/API.md`](docs/API.md) — API route reference
+- [`docs/EXCEL_IMPORT.md`](docs/EXCEL_IMPORT.md) — master-data import details
+- [`CLAUDE.md`](CLAUDE.md) — session/implementation notes, decisions and their reasoning
 
-## Deploy on Vercel
+## Roles
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Manager** (`/manager/*`) — dashboard, projects, resources, tasks,
+  attendance, reports, audit log, settings.
+- **Resource** (`/resource/*`) — dashboard, submit work.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Login uses an Employee ID + password (mapped internally to a
+`{employeeId}@rot-internal.local` Supabase Auth account). First-time users
+go through `/set-password` before their first real login.

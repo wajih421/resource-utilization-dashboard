@@ -1,72 +1,118 @@
 # ROT Workshop Resource Utilization Dashboard — Session Context
 
+See also: `docs/SRS.md` (full requirements spec), `docs/DATABASE.md` (schema
+reference), `docs/API.md` (endpoint reference), `docs/EXCEL_IMPORT.md`
+(master-data import).
+
 ## Stack
-- Next.js (App Router, TypeScript)
+
+- Next.js 16 (App Router, TypeScript), React 19
 - Supabase (auth + Postgres) — role-based access via `profiles.role` ("manager" | "resource")
-- Tailwind (plain utility classes, no shadcn imports used in built components so far)
-- Zod for shared client+server validation
+- TanStack React Query for all client-side data fetching/mutation (see "Why React Query" below)
+- Tailwind (plain utility classes, no shadcn imports used in built components)
+- Zod for validation, ExcelJS for the master-data importer
+- Vitest for unit tests (69 tests across 6 files, all pure logic — no DB/network mocking needed)
 
 ## Business Rules Locked In
-- Utilization thresholds (lib/utils/utilization.ts):
-  - Not Filled: totalHours <= 0
-  - Less Utilized: < 6h
-  - Fully Utilized: 6h–8h
-  - Highly Utilized: 8h–10h
-  - Abnormally Utilized: > 10h
-  - Weekend handled separately (flagged via work_day_type, not a threshold)
-- WorkLogs store `applied_task_hours` at submission time — never recompute historical hours from current Task.default_hours.
-- Tasks are NEVER hard-deleted — only soft-deleted via `active = false`, because WorkLogs FK-reference task_id and historical rows must stay queryable.
-- Every manager mutation that changes something meaningful writes to `audit_logs` (manager_id, action, entity_type, entity_id, old_value, new_value).
-- RBAC pattern: every manager API route calls a local `requireManager(supabase)` helper that checks `profiles.role === 'manager'`. (Currently duplicated per-route — candidate for extraction into `lib/supabase/require-manager.ts` later if it gets noisy.)
 
-## Existing Project Structure (as of this session)
-- app/(auth)/login, set-password — done
-- app/api/auth/login, set-password — done
-- app/api/manager/assign-project, dashboard-summary, projects, resources — done (pre-existing)
-- app/api/manager/tasks — DONE THIS SESSION (GET existed, added POST/PATCH extended/DELETE)
-- app/api/manager/task-categories — NEW THIS SESSION (GET, POST)
-- app/api/resource/projects, tasks — done (pre-existing)
-- app/api/work-logs — done (pre-existing)
-- app/manager/attendance, dashboard, projects, resources, tasks — pages exist in tree
-- app/manager/tasks/page.tsx — BUILT THIS SESSION (full CRUD UI: filters, inline default-hours edit, add task, add category, activate/deactivate)
-- app/resource/dashboard, submit-work — pages exist in tree (not yet reviewed this session)
-- components/attendance/AttendanceWidget.tsx — done, reviewed
-- components/charts/ProjectUtilizationChart.tsx — done, reviewed (recharts horizontal bar, color-coded by %)
-- components/forms/WorkLogForm.tsx — done, reviewed (fetches own projects/tasks, calculates total hours client-side, server validates via workLogSchema)
-- components/manager/AssignProjectControl.tsx — done, reviewed
-- components/tables/ResourceUtilizationTable.tsx, SummaryTable.tsx — done, reviewed
-- lib/utils/utilization.ts — reviewed (see thresholds above)
-- lib/validations/worklog-schema.ts — reviewed (zod schema: project_id, task_id as uuid; work_date can't be future; units_completed positive, max 100)
-- lib/supabase/client.ts, middleware.ts, server.ts — exist, not reviewed
-- types/database-types.ts — EMPTY, not yet generated/filled
-- supabase/migrations/001_add_has_custom_password.sql — exists, only migration seen so far; full schema SQL not yet shared
+- Utilization thresholds are **configurable**, stored in `utilization_settings`
+  (single-row table: `daily_capacity_hours`, `less_utilized_max`,
+  `fully_utilized_max`, `highly_utilized_max`) and edited via
+  `/manager/settings`. Classification is by **absolute hours**, not percentage
+  — see `lib/utils/utilization.ts` and docs/DATABASE.md for why this was
+  chosen over the percentage-based scheme the SRS sketches.
+- WorkLogs store `applied_task_hours` at submission time — never recompute
+  historical hours from current Task.default_hours.
+- Tasks and Projects are NEVER hard-deleted — only soft-deleted via
+  `active = false`, because WorkLogs/resource_projects FK-reference them and
+  historical rows must stay queryable.
+- Every manager mutation that changes something meaningful writes to
+  `audit_logs` (manager_id, action, entity_type, entity_id, old_value,
+  new_value) via `lib/supabase/audit-log.ts`.
+- RBAC pattern: `lib/supabase/require-manager.ts` exports `requireManager()`
+  and `requireAuth()`, used by every `app/api/**` route instead of the
+  duplicated inline checks that used to exist per-file.
+- **Manager writes to another resource's row need the service-role client**,
+  not the session client. RLS on tables with a natural "owner" (currently
+  `attendance_logs`) restricts writes to the owning resource; a manager
+  overriding another resource's attendance therefore authenticates with the
+  session client (`requireManager`) but performs the actual read/write with
+  `createServiceRoleClient()`. `resource_projects` and the global tables
+  (`tasks`, `projects`, `task_categories`) do NOT have this restriction —
+  confirmed via real end-to-end HTTP testing, not assumed.
 
-## Open Assumptions (unverified — flag if wrong)
-- `tasks` table columns: id, project_id, task_category_id, name, ne_batch, default_hours, active, created_at, updated_at
-- `task_categories` table: id, name (name assumed UNIQUE — needed for "already exists" error path)
-- `projects` table has at least id, name (used via existing /api/manager/projects)
-- `audit_logs` table: manager_id, action, entity_type, entity_id, old_value (jsonb), new_value (jsonb), created_at (default now())
+## Why React Query
 
-## Files NOT yet reviewed/needed
-- Full DB schema/migrations (only saw 001_add_has_custom_password.sql)
-- lib/supabase/client.ts, middleware.ts, server.ts
-- Existing content of app/manager/dashboard/page.tsx, app/manager/projects/page.tsx, app/manager/resources/page.tsx, app/manager/attendance/page.tsx, app/resource/dashboard/page.tsx, app/resource/submit-work/page.tsx
-- Excel master data file (for import/seed script)
+Every client-fetching page used to be raw `useEffect` + `fetch` + `useState`,
+which the project's own ESLint config (`react-hooks/set-state-in-effect`,
+part of the React Compiler ruleset already configured in `eslint.config.mjs`)
+flags as an error. `@tanstack/react-query` was already an installed
+dependency, unused. Next.js's own bundled docs
+(`node_modules/next/dist/docs/01-app/02-guides/single-page-applications.md`)
+name it explicitly as the recommended pattern for this kind of client-side
+fetching. All pages now use `useQuery`/`useMutation` (provider wired up in
+`app/providers.tsx` / `app/layout.tsx`); `npm run lint` and `npx tsc --noEmit`
+are both clean (0 errors, 0 warnings).
 
-## Progress Against Phase Plan (from SRS section 28)
-- Phase 1 (Auth + roles): appears done (login, set-password, RBAC via profiles.role)
-- Phase 2 (Resource/project/task data): tasks CRUD done this session; projects/resources CRUD status unconfirmed
-- Phase 3 (Resource task submission): WorkLogForm + work-logs API exist, not yet reviewed for correctness this session
-- Phase 4 (Utilization calculations): thresholds defined in utilization.ts; dashboard-summary route exists but not reviewed
-- Phase 5 (Manager dashboard): page exists, not reviewed
-- Phase 6 (Assignment management): AssignProjectControl.tsx + assign-project route exist, not reviewed
-- Phase 7 (Task/default-hour management): ✅ DONE THIS SESSION
-- Phase 8 (Historical analytics): not started
-- Phase 9 (Audit logs + exports): audit logging pattern established and used; exports not started
+## Project Structure (current)
 
-## Next Steps (pending user choice — options given were)
-1. Dashboard Summary API + charts wiring (utilization calc)
-2. Resource side: Submit Work + Dashboard pages
-3. Excel import/seed script for master data
+- `app/(auth)/login`, `set-password` — done
+- `app/api/auth/login`, `set-password` — done (set-password uses the shared `createServiceRoleClient()`)
+- `app/api/settings` — GET (any authenticated user), PATCH (manager only) — done
+- `app/api/manager/tasks`, `task-categories` — full CRUD — done
+- `app/api/manager/projects` — full CRUD + `?includeInactive=true` for the management view — done
+- `app/api/manager/resources`, `assign-project` — done
+- `app/api/manager/dashboard-summary` — done, reads configurable thresholds/capacity from `utilization_settings`
+- `app/api/manager/attendance` — GET (list + computed status) / POST (mark on_leave) — done, uses service-role for the actual DB ops
+- `app/api/manager/reports` — historical analytics with date-range presets + 6 filter dimensions — done
+- `app/api/manager/audit-log` — paginated audit trail — done
+- `app/api/resource/projects`, `tasks`, `attendance`, `today-summary` — done (today-summary was previously misplaced under `app/manager/resources/today-summary/`, now fixed)
+- `app/api/work-logs` — done (pre-existing)
+- `app/manager/{dashboard,tasks,resources,attendance,projects,reports,audit-log,settings}` — all built, all React Query
+- `app/resource/{dashboard,submit-work}` — done, React Query
+- `components/attendance/AttendanceWidget.tsx` — done, React Query
+- `components/tables/ResourceUtilizationTable.tsx` — done (only surviving pre-built component; the other 4 — WorkLogForm, AssignProjectControl, SummaryTable, ProjectUtilizationChart — were dead/unused with real bugs and were deleted)
+- `lib/utils/utilization.ts`, `attendance.ts`, `date-range.ts`, `working-days.ts` — pure, unit-tested
+- `lib/reports/build-report.ts` — pure aggregation for Reports, unit-tested
+- `lib/import/parse-master-data.ts` — pure Excel row parsing/validation, unit-tested
+- `lib/supabase/require-manager.ts`, `audit-log.ts`, `utilization-settings.ts` — shared server helpers
+- `scripts/import-master-data.mjs` — Excel master-data import (dry-run tested against `docs/sample-master-data.xlsx`; never run in write mode against the live DB — see docs/EXCEL_IMPORT.md)
+- `scripts/seed-auth-users.mjs` — pre-existing, updated to use `scripts/lib/load-env.mjs`
+- `types/database-types.ts` — hand-written from real schema introspection (was empty before)
 
-User said: do all steps one by one, confirm before each, update this context.md after every step.
+## Environment note
+
+The project's env file is `.env.local` (not `.env`) — Next.js loads this
+automatically, but standalone Node scripts need `scripts/lib/load-env.mjs`
+(handles both names, prefers `.env.local`).
+
+## Verification done this session
+
+- `npx tsc --noEmit` — 0 errors
+- `npx eslint .` — 0 errors, 0 warnings
+- `npx vitest run` — 69/69 tests passing (utilization thresholds, attendance
+  status derivation, date-range presets incl. a timezone bug caught by the
+  tests themselves, working-days parsing, report aggregation, Excel row
+  parsing)
+- Full end-to-end run against the live dev server with real, synthetic
+  QA manager + resource accounts (created, exercised every new/changed route
+  and page over real HTTP with real sessions, then fully deleted) — 40/40
+  checks passed. This is what caught the `attendance_logs` RLS gap; a
+  same-shape test for `resource_projects` confirmed that table has no
+  equivalent issue.
+
+## Known limitations / deliberately out of scope
+
+- Excel import script is built and dry-run verified against a synthetic
+  sample workbook (`docs/sample-master-data.xlsx`), but has never been run
+  in write mode against the real Excel file, because no real file has been
+  shared yet. Column-header aliases may need adjusting once a real file is
+  available — see docs/EXCEL_IMPORT.md.
+- Attendance status derivation assumes same-day shifts (no overnight
+  wraparound) and a fixed 10-minute late-grace-period; see
+  `lib/utils/attendance.ts`.
+- Reports' per-project "capacity" figure is an approximation
+  (`assignedResources × dailyCapacityHours × daysInRange`) — it doesn't
+  account for individual resources' `working_days` calendars the way the
+  daily dashboard's status classification does. Documented in
+  `lib/reports/build-report.ts`.
