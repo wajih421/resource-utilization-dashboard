@@ -1,73 +1,21 @@
 // app/api/manager/dashboard-summary/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUtilizationStatus, type UtilizationStatus } from "@/lib/utils/utilization";
-
-// ---- Working-days helper -------------------------------------------------
-// resources.working_days is a free-text field like "Mon to Fri" or
-// "Mon to Sat". We parse it to decide if the selected date falls on that
-// resource's day off, so we can report "Weekend" instead of a hours-based
-// status (which would otherwise show as "Not Filled" and look like a
-// missed day rather than an expected day off).
-
-const DAY_ORDER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function isWorkingDay(workingDays: string | null, dateStr: string): boolean {
-  if (!workingDays) return true; // unknown -> assume it's a working day
-
-  const match = workingDays.match(/(\w{3})\w*\s*to\s*(\w{3})/i);
-  if (!match) return true; // unparseable format -> don't guess, assume working day
-
-  const startIdx = DAY_ORDER.findIndex(
-    (d) => d.toLowerCase() === match[1].slice(0, 3).toLowerCase()
-  );
-  const endIdx = DAY_ORDER.findIndex(
-    (d) => d.toLowerCase() === match[2].slice(0, 3).toLowerCase()
-  );
-  if (startIdx === -1 || endIdx === -1) return true;
-
-  const targetIdx = new Date(dateStr + "T00:00:00").getDay();
-
-  if (startIdx <= endIdx) {
-    return targetIdx >= startIdx && targetIdx <= endIdx;
-  }
-  // range wraps around the week (e.g. Fri to Tue)
-  return targetIdx >= startIdx || targetIdx <= endIdx;
-}
+import { requireManager } from "@/lib/supabase/require-manager";
+import { getUtilizationSettings } from "@/lib/supabase/utilization-settings";
+import { getUtilizationStatus, getUtilizationPercent, type UtilizationStatus } from "@/lib/utils/utilization";
+import { isWorkingDay } from "@/lib/utils/working-days";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profileErr || profile?.role !== "manager") {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
+  const auth = await requireManager(supabase);
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
 
-  const { data: settings, error: settingsErr } = await supabase
-    .from("utilization_settings")
-    .select("daily_capacity_hours")
-    .single();
-
-  if (settingsErr || !settings) {
-    console.error("Failed to load utilization_settings:", settingsErr);
-    return NextResponse.json({ error: "Could not load utilization settings" }, { status: 500 });
-  }
-  const dailyCapacityHours = Number(settings.daily_capacity_hours);
+  const { dailyCapacityHours, thresholds } = await getUtilizationSettings(supabase);
 
   const { data: resources, error: resourcesErr } = await supabase
     .from("resources")
@@ -101,7 +49,7 @@ export async function GET(request: Request) {
 
   const { data: workLogs, error: workLogsErr } = await supabase
     .from("work_logs")
-    .select("resource_id, project_id, total_hours")
+    .select("resource_id, project_id, total_hours, work_day_type")
     .eq("work_date", date);
 
   if (workLogsErr) {
@@ -111,9 +59,13 @@ export async function GET(request: Request) {
 
   // ---- Per-resource totals (across all their projects, for the date) ----
   const hoursByResource = new Map<string, number>();
+  const hasWeekendLog = new Set<string>();
   for (const log of workLogs ?? []) {
     const prev = hoursByResource.get(log.resource_id) ?? 0;
     hoursByResource.set(log.resource_id, prev + Number(log.total_hours ?? 0));
+    if (log.work_day_type === "weekend") {
+      hasWeekendLog.add(log.resource_id);
+    }
   }
 
   const statusCounts: Record<UtilizationStatus | "Weekend", number> = {
@@ -143,14 +95,18 @@ export async function GET(request: Request) {
     const totalHours = hoursByResource.get(r.id) ?? 0;
     if (totalHours > 0) activeResources++;
 
-    const utilizationPercent = (totalHours / dailyCapacityHours) * 100;
+    const utilizationPercent = getUtilizationPercent(totalHours, dailyCapacityHours);
 
-    if (!isWorkingDay(r.working_days, date)) {
+    // A resource can either be on an explicit weekend schedule (working_days
+    // doesn't cover this date) or have logged work with work_day_type =
+    // "weekend" on what would otherwise be a working day. Either marks the
+    // day as Weekend rather than a hours-based status.
+    if (!isWorkingDay(r.working_days, date) || hasWeekendLog.has(r.id)) {
       statusCounts.Weekend++;
       resourceRows.push({
         resourceId: r.id,
         name: r.name,
-        employeeId: r.employee_id,
+        employeeId: r.employee_id ?? "",
         hours: totalHours,
         utilizationPercent,
         status: "Weekend",
@@ -158,12 +114,12 @@ export async function GET(request: Request) {
       continue; // weekend days don't count toward the average
     }
 
-    const status = getUtilizationStatus(totalHours);
+    const status = getUtilizationStatus(totalHours, thresholds);
     statusCounts[status]++;
     resourceRows.push({
       resourceId: r.id,
       name: r.name,
-      employeeId: r.employee_id,
+      employeeId: r.employee_id ?? "",
       hours: totalHours,
       utilizationPercent,
       status,

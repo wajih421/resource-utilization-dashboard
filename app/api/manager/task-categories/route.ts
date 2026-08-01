@@ -1,30 +1,14 @@
 // app/api/manager/task-categories/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-async function requireManager(supabase: any) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated", status: 401 };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "manager") return { error: "Manager access only", status: 403 };
-  return { user };
-}
+import { requireManager } from "@/lib/supabase/require-manager";
+import { writeAuditLog } from "@/lib/supabase/audit-log";
 
 export async function GET() {
   try {
     const supabase = await createClient();
     const auth = await requireManager(supabase);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    if ("error" in auth) return auth.error;
 
     const { data, error } = await supabase
       .from("task_categories")
@@ -47,9 +31,7 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient();
     const auth = await requireManager(supabase);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    if ("error" in auth) return auth.error;
 
     const { name } = await request.json();
     if (!name || !name.trim()) {
@@ -70,13 +52,13 @@ export async function POST(request: Request) {
       );
     }
 
-    await supabase.from("audit_logs").insert({
-      manager_id: auth.user.id,
+    await writeAuditLog(supabase, {
+      managerId: auth.user.id,
       action: "create_task_category",
-      entity_type: "task_categories",
-      entity_id: newCategory.id,
-      old_value: null,
-      new_value: newCategory,
+      entityType: "task_categories",
+      entityId: newCategory.id,
+      oldValue: null,
+      newValue: newCategory,
     });
 
     return NextResponse.json({ category: newCategory }, { status: 201 });

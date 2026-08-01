@@ -1,25 +1,8 @@
 // app/api/manager/assign-project/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-async function requireManager(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Not authenticated" }, { status: 401 }) };
-
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profileErr || profile?.role !== "manager") {
-    return { error: NextResponse.json({ error: "Not authorized" }, { status: 403 }) };
-  }
-
-  return { user };
-}
+import { requireManager } from "@/lib/supabase/require-manager";
+import { writeAuditLog } from "@/lib/supabase/audit-log";
 
 // POST { resourceId, projectId } -> adds a new active assignment.
 // Resources can be assigned to MULTIPLE projects at once (matches the
@@ -27,7 +10,7 @@ async function requireManager(supabase: Awaited<ReturnType<typeof createClient>>
 export async function POST(request: Request) {
   const supabase = await createClient();
   const auth = await requireManager(supabase);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
   const { user } = auth;
 
   const body = await request.json();
@@ -82,13 +65,13 @@ export async function POST(request: Request) {
     }
   }
 
-  await supabase.from("audit_logs").insert({
-    manager_id: user!.id,
+  await writeAuditLog(supabase, {
+    managerId: user.id,
     action: "assign_project",
-    entity_type: "resource",
-    entity_id: resourceId,
-    old_value: null,
-    new_value: { project_id: projectId },
+    entityType: "resource",
+    entityId: resourceId,
+    oldValue: null,
+    newValue: { project_id: projectId },
   });
 
   return NextResponse.json({ success: true });
@@ -99,7 +82,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const supabase = await createClient();
   const auth = await requireManager(supabase);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
   const { user } = auth;
 
   const body = await request.json();
@@ -129,13 +112,13 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Could not remove assignment" }, { status: 500 });
   }
 
-  await supabase.from("audit_logs").insert({
-    manager_id: user!.id,
+  await writeAuditLog(supabase, {
+    managerId: user.id,
     action: "remove_project_assignment",
-    entity_type: "resource",
-    entity_id: assignment.resource_id,
-    old_value: { project_id: assignment.project_id },
-    new_value: null,
+    entityType: "resource",
+    entityId: assignment.resource_id,
+    oldValue: { project_id: assignment.project_id },
+    newValue: null,
   });
 
   return NextResponse.json({ success: true });

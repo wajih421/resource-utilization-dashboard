@@ -35,7 +35,7 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch projects" }, { status: 500 });
     }
 
-    const projects = (data ?? []).map((row: any) => row.projects).filter(Boolean);
+    const projects = (data ?? []).map((row) => row.projects).filter(Boolean);
 
     return NextResponse.json({ projects });
   } catch (err) {

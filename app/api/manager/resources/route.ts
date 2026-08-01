@@ -1,30 +1,13 @@
 // app/api/manager/resources/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-async function requireManager(supabase: any) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated", status: 401 };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "manager") return { error: "Manager access only", status: 403 };
-  return { user };
-}
+import { requireManager } from "@/lib/supabase/require-manager";
 
 export async function GET() {
   try {
     const supabase = await createClient();
     const auth = await requireManager(supabase);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    if ("error" in auth) return auth.error;
 
     const { data: resources, error: resErr } = await supabase
       .from("resources")
@@ -46,13 +29,14 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch assignments" }, { status: 500 });
     }
 
-    const assignmentsByResource = new Map<string, any[]>();
+    type Assignment = { assignmentId: string; projectId: string; projectName: string | undefined };
+    const assignmentsByResource = new Map<string, Assignment[]>();
     for (const a of assignments ?? []) {
       const list = assignmentsByResource.get(a.resource_id) ?? [];
       list.push({
         assignmentId: a.id,
         projectId: a.project_id,
-        projectName: (a.projects as any)?.name,
+        projectName: (a.projects as { name?: string } | null)?.name,
       });
       assignmentsByResource.set(a.resource_id, list);
     }
