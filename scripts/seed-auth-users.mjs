@@ -1,7 +1,7 @@
 // scripts/seed-auth-users.mjs
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
-import "dotenv/config";
+import "./lib/load-env.mjs";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
