@@ -1,7 +1,8 @@
 // app/manager/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ResourceUtilizationTable, {
   type ResourceUtilizationRow,
 } from "@/components/tables/ResourceUtilizationTable";
@@ -34,32 +35,20 @@ type DashboardData = {
   resources: ResourceUtilizationRow[];
 };
 
+async function fetchDashboardSummary(date: string): Promise<DashboardData> {
+  const res = await fetch(`/api/manager/dashboard-summary?date=${date}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load dashboard");
+  return data;
+}
+
 export default function ManagerDashboardPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/manager/dashboard-summary?date=${date}`);
-        const result = await res.json();
-        if (!res.ok) {
-          setError(result.error || "Failed to load dashboard");
-          return;
-        }
-        setData(result);
-      } catch {
-        setError("Could not connect to server");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, [date]);
+  const { data, isLoading: loading, error } = useQuery({
+    queryKey: ["manager-dashboard-summary", date],
+    queryFn: () => fetchDashboardSummary(date),
+  });
 
   return (
     <div>
@@ -76,7 +65,7 @@ export default function ManagerDashboardPage() {
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : error ? (
-        <p className="text-red-600">{error}</p>
+        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load dashboard"}</p>
       ) : data ? (
         <>
           {/* KPI Cards */}

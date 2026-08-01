@@ -1,7 +1,7 @@
-// app/manager/tasks/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Project = { id: string; name: string };
 type Category = { id: string; name: string };
@@ -15,12 +15,36 @@ type Task = {
   task_categories: { id: string; name: string } | null;
 };
 
+async function fetchAll() {
+  const [tasksRes, projectsRes, categoriesRes] = await Promise.all([
+    fetch("/api/manager/tasks"),
+    fetch("/api/manager/projects"),
+    fetch("/api/manager/task-categories"),
+  ]);
+  const [tasksData, projectsData, categoriesData] = await Promise.all([
+    tasksRes.json(),
+    projectsRes.json(),
+    categoriesRes.json(),
+  ]);
+
+  if (!tasksRes.ok) throw new Error(tasksData.error || "Failed to load tasks");
+  if (!projectsRes.ok) throw new Error(projectsData.error || "Failed to load projects");
+  if (!categoriesRes.ok) throw new Error(categoriesData.error || "Failed to load categories");
+
+  return {
+    tasks: (tasksData.tasks ?? []) as Task[],
+    projects: (projectsData.projects ?? []) as Project[],
+    categories: (categoriesData.categories ?? []) as Category[],
+  };
+}
+
 export default function ManagerTasksPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery({ queryKey: ["manager-tasks"], queryFn: fetchAll });
+  const projects = data?.projects ?? [];
+  const categories = data?.categories ?? [];
+
+  const [actionError, setActionError] = useState("");
 
   const [projectFilter, setProjectFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -28,7 +52,6 @@ export default function ManagerTasksPage() {
   const [search, setSearch] = useState("");
 
   const [editValues, setEditValues] = useState<Record<string, string>>({});
-  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -38,47 +61,104 @@ export default function ManagerTasksPage() {
     ne_batch: "",
     default_hours: "2",
   });
-  const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [creatingCategory, setCreatingCategory] = useState(false);
 
-  async function loadAll() {
-    setLoading(true);
-    setError("");
-    try {
-      const [tasksRes, projectsRes, categoriesRes] = await Promise.all([
-        fetch("/api/manager/tasks"),
-        fetch("/api/manager/projects"),
-        fetch("/api/manager/task-categories"),
-      ]);
-      const [tasksData, projectsData, categoriesData] = await Promise.all([
-        tasksRes.json(),
-        projectsRes.json(),
-        categoriesRes.json(),
-      ]);
-
-      if (!tasksRes.ok) throw new Error(tasksData.error || "Failed to load tasks");
-      if (!projectsRes.ok) throw new Error(projectsData.error || "Failed to load projects");
-      if (!categoriesRes.ok) throw new Error(categoriesData.error || "Failed to load categories");
-
-      setTasks(tasksData.tasks ?? []);
-      setProjects(projectsData.projects ?? []);
-      setCategories(categoriesData.categories ?? []);
-    } catch (err: any) {
-      setError(err.message || "Could not load data");
-    } finally {
-      setLoading(false);
-    }
+  function invalidate() {
+    return queryClient.invalidateQueries({ queryKey: ["manager-tasks"] });
   }
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  const saveHoursMutation = useMutation({
+    mutationFn: async ({ taskId, value }: { taskId: string; value: number }) => {
+      const res = await fetch("/api/manager/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, default_hours: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update task");
+      return data;
+    },
+    onSuccess: async (_data, variables) => {
+      await invalidate();
+      cancelEdit(variables.taskId);
+      setActionError("");
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Failed to update task"),
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async (task: Task) => {
+      if (task.active) {
+        const res = await fetch(`/api/manager/tasks?taskId=${task.id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to deactivate task");
+      } else {
+        const res = await fetch("/api/manager/tasks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId: task.id, active: true }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to reactivate task");
+      }
+    },
+    onSuccess: async () => {
+      await invalidate();
+      setActionError("");
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Failed to update task"),
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: async (payload: typeof newTask) => {
+      const res = await fetch("/api/manager/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: payload.project_id,
+          task_category_id: payload.task_category_id,
+          name: payload.name.trim(),
+          ne_batch: payload.ne_batch.trim() || null,
+          default_hours: Number(payload.default_hours),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create task");
+      return data;
+    },
+    onSuccess: async () => {
+      await invalidate();
+      setNewTask({ project_id: "", task_category_id: "", name: "", ne_batch: "", default_hours: "2" });
+      setShowAddForm(false);
+      setCreateError("");
+    },
+    onError: (err) => setCreateError(err instanceof Error ? err.message : "Failed to create task"),
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch("/api/manager/task-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create category");
+      return data.category as Category;
+    },
+    onSuccess: async (category) => {
+      await invalidate();
+      setNewTask((prev) => ({ ...prev, task_category_id: category.id }));
+      setNewCategoryName("");
+      setCreateError("");
+    },
+    onError: (err) => setCreateError(err instanceof Error ? err.message : "Failed to create category"),
+  });
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    return (data?.tasks ?? []).filter((t) => {
       if (projectFilter && t.projects?.id !== projectFilter) return false;
       if (categoryFilter && t.task_categories?.id !== categoryFilter) return false;
       if (statusFilter === "active" && !t.active) return false;
@@ -86,7 +166,7 @@ export default function ManagerTasksPage() {
       if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [tasks, projectFilter, categoryFilter, statusFilter, search]);
+  }, [data, projectFilter, categoryFilter, statusFilter, search]);
 
   function startEdit(task: Task) {
     setEditValues((prev) => ({ ...prev, [task.id]: String(task.default_hours) }));
@@ -100,68 +180,17 @@ export default function ManagerTasksPage() {
     });
   }
 
-  async function saveDefaultHours(taskId: string) {
+  function saveDefaultHours(taskId: string) {
     const raw = editValues[taskId];
     const value = Number(raw);
     if (!raw || isNaN(value) || value <= 0) {
-      setError("Default hours must be a positive number");
+      setActionError("Default hours must be a positive number");
       return;
     }
-
-    setSavingTaskId(taskId);
-    setError("");
-    try {
-      const res = await fetch("/api/manager/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, default_hours: value }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to update task");
-        return;
-      }
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, default_hours: value } : t)));
-      cancelEdit(taskId);
-    } catch {
-      setError("Could not connect to server");
-    } finally {
-      setSavingTaskId(null);
-    }
+    saveHoursMutation.mutate({ taskId, value });
   }
 
-  async function toggleActive(task: Task) {
-    setSavingTaskId(task.id);
-    setError("");
-    try {
-      if (task.active) {
-        const res = await fetch(`/api/manager/tasks?taskId=${task.id}`, { method: "DELETE" });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to deactivate task");
-          return;
-        }
-      } else {
-        const res = await fetch("/api/manager/tasks", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ taskId: task.id, active: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to reactivate task");
-          return;
-        }
-      }
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, active: !t.active } : t)));
-    } catch {
-      setError("Could not connect to server");
-    } finally {
-      setSavingTaskId(null);
-    }
-  }
-
-  async function handleCreateTask(e: React.FormEvent) {
+  function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
     setCreateError("");
 
@@ -174,62 +203,19 @@ export default function ManagerTasksPage() {
       setCreateError("Default hours must be greater than 0");
       return;
     }
-
-    setCreating(true);
-    try {
-      const res = await fetch("/api/manager/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: newTask.project_id,
-          task_category_id: newTask.task_category_id,
-          name: newTask.name.trim(),
-          ne_batch: newTask.ne_batch.trim() || null,
-          default_hours: hours,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setCreateError(data.error || "Failed to create task");
-        return;
-      }
-      await loadAll();
-      setNewTask({ project_id: "", task_category_id: "", name: "", ne_batch: "", default_hours: "2" });
-      setShowAddForm(false);
-    } catch {
-      setCreateError("Could not connect to server");
-    } finally {
-      setCreating(false);
-    }
+    createTaskMutation.mutate(newTask);
   }
 
-  async function handleCreateCategory() {
+  function handleCreateCategory() {
     if (!newCategoryName.trim()) return;
-    setCreatingCategory(true);
-    try {
-      const res = await fetch("/api/manager/task-categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newCategoryName.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setCreateError(data.error || "Failed to create category");
-        return;
-      }
-      setCategories((prev) => [...prev, data.category].sort((a, b) => a.name.localeCompare(b.name)));
-      setNewTask((prev) => ({ ...prev, task_category_id: data.category.id }));
-      setNewCategoryName("");
-    } catch {
-      setCreateError("Could not connect to server");
-    } finally {
-      setCreatingCategory(false);
-    }
+    createCategoryMutation.mutate(newCategoryName.trim());
   }
 
-  if (loading) {
+  if (isLoading) {
     return <div className="p-6 text-gray-500">Loading tasks...</div>;
   }
+
+  const displayError = error instanceof Error ? error.message : actionError;
 
   return (
     <div className="p-6 space-y-6">
@@ -243,9 +229,9 @@ export default function ManagerTasksPage() {
         </button>
       </div>
 
-      {error && (
+      {displayError && (
         <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded px-3 py-2">
-          {error}
+          {displayError}
         </div>
       )}
 
@@ -291,10 +277,10 @@ export default function ManagerTasksPage() {
                 <button
                   type="button"
                   onClick={handleCreateCategory}
-                  disabled={creatingCategory || !newCategoryName.trim()}
+                  disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
                   className="bg-gray-700 text-white rounded px-2 py-1 text-xs disabled:opacity-40"
                 >
-                  {creatingCategory ? "Adding..." : "Add Category"}
+                  {createCategoryMutation.isPending ? "Adding..." : "Add Category"}
                 </button>
               </div>
             </div>
@@ -338,10 +324,10 @@ export default function ManagerTasksPage() {
 
           <button
             type="submit"
-            disabled={creating}
+            disabled={createTaskMutation.isPending}
             className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-40"
           >
-            {creating ? "Creating..." : "Create Task"}
+            {createTaskMutation.isPending ? "Creating..." : "Create Task"}
           </button>
         </form>
       )}
@@ -377,7 +363,7 @@ export default function ManagerTasksPage() {
           <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
             className="border rounded px-2 py-1.5 text-sm"
           >
             <option value="active">Active only</option>
@@ -420,6 +406,9 @@ export default function ManagerTasksPage() {
             )}
             {filteredTasks.map((task) => {
               const isEditing = task.id in editValues;
+              const isBusy =
+                (saveHoursMutation.isPending && saveHoursMutation.variables?.taskId === task.id) ||
+                (toggleActiveMutation.isPending && toggleActiveMutation.variables?.id === task.id);
               return (
                 <tr key={task.id} className={`border-t ${!task.active ? "opacity-50" : ""}`}>
                   <td className="px-4 py-2">{task.projects?.name ?? "—"}</td>
@@ -459,7 +448,7 @@ export default function ManagerTasksPage() {
                         <>
                           <button
                             onClick={() => saveDefaultHours(task.id)}
-                            disabled={savingTaskId === task.id}
+                            disabled={isBusy}
                             className="text-blue-600 text-xs font-medium disabled:opacity-40"
                           >
                             Save
@@ -474,8 +463,8 @@ export default function ManagerTasksPage() {
                         </button>
                       )}
                       <button
-                        onClick={() => toggleActive(task)}
-                        disabled={savingTaskId === task.id}
+                        onClick={() => toggleActiveMutation.mutate(task)}
+                        disabled={isBusy}
                         className={`text-xs font-medium disabled:opacity-40 ${
                           task.active ? "text-red-600" : "text-green-600"
                         }`}

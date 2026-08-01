@@ -1,7 +1,8 @@
 // app/manager/attendance/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type AttendanceRow = {
   id: string;
@@ -32,55 +33,37 @@ const statusColor: Record<string, string> = {
   pending: "text-gray-500 bg-gray-50",
 };
 
+async function fetchAttendance(date: string): Promise<AttendanceRow[]> {
+  const res = await fetch(`/api/manager/attendance?date=${date}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load attendance");
+  return data.attendance;
+}
+
 export default function ManagerAttendancePage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [rows, setRows] = useState<AttendanceRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  async function loadData() {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/manager/attendance?date=${date}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to load attendance");
-        return;
-      }
-      setRows(data.attendance);
-    } catch {
-      setError("Could not connect to server");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { data: rows = [], isLoading, error } = useQuery({
+    queryKey: ["manager-attendance", date],
+    queryFn: () => fetchAttendance(date),
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [date]);
-
-  async function markLeave(resourceId: string) {
-    setBusyId(resourceId);
-    try {
+  const markLeaveMutation = useMutation({
+    mutationFn: async (resourceId: string) => {
       const res = await fetch("/api/manager/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resourceId, date, status: "on_leave" }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to mark leave");
-        return;
-      }
-      await loadData();
-    } catch {
-      alert("Could not connect to server");
-    } finally {
-      setBusyId(null);
-    }
-  }
+      if (!res.ok) throw new Error(data.error || "Failed to mark leave");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["manager-attendance", date] });
+    },
+  });
 
   const counts = rows.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
@@ -112,10 +95,16 @@ export default function ManagerAttendancePage() {
         ))}
       </div>
 
-      {loading ? (
+      {markLeaveMutation.isError && (
+        <p className="text-red-600 text-sm mb-3">
+          {markLeaveMutation.error instanceof Error ? markLeaveMutation.error.message : "Failed to mark leave"}
+        </p>
+      )}
+
+      {isLoading ? (
         <p className="text-gray-500">Loading...</p>
       ) : error ? (
-        <p className="text-red-600">{error}</p>
+        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load attendance"}</p>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
           <table className="w-full text-sm">
@@ -162,9 +151,9 @@ export default function ManagerAttendancePage() {
                   <td className="p-3">
                     {r.status !== "on_leave" && (
                       <button
-                        onClick={() => markLeave(r.id)}
-                        disabled={busyId === r.id}
-                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={() => markLeaveMutation.mutate(r.id)}
+                        disabled={markLeaveMutation.isPending}
+                        className="text-xs text-blue-600 hover:underline disabled:opacity-40"
                       >
                         Mark On Leave
                       </button>

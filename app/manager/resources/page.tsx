@@ -1,7 +1,8 @@
 // app/manager/resources/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 type AssignedProject = {
   assignmentId: string;
@@ -26,94 +27,78 @@ const categoryColor: Record<string, string> = {
   "In-Source": "bg-teal-100 text-teal-700",
 };
 
+async function fetchResourcesAndProjects() {
+  const [resResources, resProjects] = await Promise.all([
+    fetch("/api/manager/resources"),
+    fetch("/api/manager/projects"),
+  ]);
+  const dataResources = await resResources.json();
+  const dataProjects = await resProjects.json();
+
+  if (!resResources.ok) throw new Error(dataResources.error || "Failed to load resources");
+  if (!resProjects.ok) throw new Error(dataProjects.error || "Failed to load projects");
+
+  return { resources: dataResources.resources as Resource[], projects: dataProjects.projects as Project[] };
+}
+
 export default function ManagerResourcesPage() {
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["manager-resources"],
+    queryFn: fetchResourcesAndProjects,
+  });
+  const resources = data?.resources ?? [];
+  const projects = data?.projects ?? [];
+
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [pendingProjectByResource, setPendingProjectByResource] = useState<
-    Record<string, string>
-  >({});
-  const [busyResourceId, setBusyResourceId] = useState<string | null>(null);
+  const [pendingProjectByResource, setPendingProjectByResource] = useState<Record<string, string>>({});
+  const [actionError, setActionError] = useState("");
 
-  async function loadData() {
-    setLoading(true);
-    setError("");
-    try {
-      const [resResources, resProjects] = await Promise.all([
-        fetch("/api/manager/resources"),
-        fetch("/api/manager/projects"),
-      ]);
-      const dataResources = await resResources.json();
-      const dataProjects = await resProjects.json();
-
-      if (!resResources.ok) {
-        setError(dataResources.error || "Failed to load resources");
-        return;
-      }
-      if (!resProjects.ok) {
-        setError(dataProjects.error || "Failed to load projects");
-        return;
-      }
-
-      setResources(dataResources.resources);
-      setProjects(dataProjects.projects);
-    } catch {
-      setError("Could not connect to server");
-    } finally {
-      setLoading(false);
-    }
+  function invalidate() {
+    return queryClient.invalidateQueries({ queryKey: ["manager-resources"] });
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function handleAssign(resourceId: string) {
-    const projectId = pendingProjectByResource[resourceId];
-    if (!projectId) return;
-
-    setBusyResourceId(resourceId);
-    try {
+  const assignMutation = useMutation({
+    mutationFn: async ({ resourceId, projectId }: { resourceId: string; projectId: string }) => {
       const res = await fetch("/api/manager/assign-project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resourceId, projectId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to assign project");
-        return;
-      }
-      setPendingProjectByResource((prev) => ({ ...prev, [resourceId]: "" }));
-      await loadData();
-    } catch {
-      alert("Could not connect to server");
-    } finally {
-      setBusyResourceId(null);
-    }
-  }
+      if (!res.ok) throw new Error(data.error || "Failed to assign project");
+      return data;
+    },
+    onSuccess: async (_data, variables) => {
+      await invalidate();
+      setPendingProjectByResource((prev) => ({ ...prev, [variables.resourceId]: "" }));
+      setActionError("");
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Failed to assign project"),
+  });
 
-  async function handleRemove(resourceId: string, assignmentId: string) {
-    setBusyResourceId(resourceId);
-    try {
+  const removeMutation = useMutation({
+    mutationFn: async ({ assignmentId }: { resourceId: string; assignmentId: string }) => {
       const res = await fetch("/api/manager/assign-project", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assignmentId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to remove assignment");
-        return;
-      }
-      await loadData();
-    } catch {
-      alert("Could not connect to server");
-    } finally {
-      setBusyResourceId(null);
-    }
+      if (!res.ok) throw new Error(data.error || "Failed to remove assignment");
+      return data;
+    },
+    onSuccess: async () => {
+      await invalidate();
+      setActionError("");
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Failed to remove assignment"),
+  });
+
+  function handleAssign(resourceId: string) {
+    const projectId = pendingProjectByResource[resourceId];
+    if (!projectId) return;
+    assignMutation.mutate({ resourceId, projectId });
   }
 
   const filteredResources = resources.filter(
@@ -134,10 +119,12 @@ export default function ManagerResourcesPage() {
         className="border rounded px-3 py-2 mb-4 w-full max-w-sm"
       />
 
-      {loading ? (
+      {actionError && <p className="text-red-600 text-sm mb-3">{actionError}</p>}
+
+      {isLoading ? (
         <p className="text-gray-500">Loading...</p>
       ) : error ? (
-        <p className="text-red-600">{error}</p>
+        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load resources"}</p>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="w-full text-sm">
@@ -180,8 +167,8 @@ export default function ManagerResourcesPage() {
                           >
                             {ap.projectName}
                             <button
-                              onClick={() => handleRemove(r.id, ap.assignmentId)}
-                              disabled={busyResourceId === r.id}
+                              onClick={() => removeMutation.mutate({ resourceId: r.id, assignmentId: ap.assignmentId })}
+                              disabled={removeMutation.isPending}
                               className="text-red-500 hover:text-red-700 font-bold"
                               title="Remove"
                             >
@@ -213,9 +200,7 @@ export default function ManagerResourcesPage() {
                       </select>
                       <button
                         onClick={() => handleAssign(r.id)}
-                        disabled={
-                          !pendingProjectByResource[r.id] || busyResourceId === r.id
-                        }
+                        disabled={!pendingProjectByResource[r.id] || assignMutation.isPending}
                         className="bg-blue-600 text-white rounded px-2 py-1 text-xs disabled:opacity-50"
                       >
                         Add
