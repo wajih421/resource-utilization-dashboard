@@ -3,6 +3,14 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Loader2, Settings2 } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Settings = {
   id: number;
@@ -28,14 +36,24 @@ export default function ManagerSettingsPage() {
     queryFn: fetchSettings,
   });
 
-  if (isLoading) {
-    return <div className="text-gray-500">Loading settings...</div>;
-  }
-  if (loadError || !settings) {
-    return <p className="text-red-600">{loadError instanceof Error ? loadError.message : "Failed to load settings"}</p>;
-  }
+  return (
+    <div className="max-w-xl space-y-6">
+      <PageHeader
+        title="Utilization Settings"
+        description="These values control how the dashboard classifies resources as Less / Fully / Highly / Abnormally Utilized, and the daily hour capacity used for utilization percentages. Changes apply immediately and are recorded in the audit log."
+      />
 
-  return <SettingsForm key={settings.id} initialSettings={settings} />;
+      {isLoading ? (
+        <Skeleton className="h-80 rounded-xl" />
+      ) : loadError || !settings ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {loadError instanceof Error ? loadError.message : "Failed to load settings"}
+        </div>
+      ) : (
+        <SettingsForm key={settings.id} initialSettings={settings} />
+      )}
+    </div>
+  );
 }
 
 function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
@@ -49,7 +67,6 @@ function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
     highly_utilized_max: String(initialSettings.highly_utilized_max),
   });
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async (values: Record<string, number>) => {
@@ -64,7 +81,7 @@ function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
     },
     onSuccess: (settings) => {
       queryClient.setQueryData(["settings"], settings);
-      setSuccess(true);
+      toast.success("Settings saved");
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to save settings"),
   });
@@ -72,7 +89,6 @@ function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setSuccess(false);
 
     const values = {
       daily_capacity_hours: Number(form.daily_capacity_hours),
@@ -96,91 +112,84 @@ function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
   }
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold">Utilization Settings</h1>
-      <p className="text-gray-600 text-sm">
-        These values control how the dashboard classifies resources as Less / Fully / Highly /
-        Abnormally Utilized, and the daily hour capacity used for utilization percentages.
-        Changes apply immediately and are recorded in the audit log.
-      </p>
+    <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+      <CardContent className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Settings2 className="size-4" />
+            Thresholds (absolute hours)
+          </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Daily Working Capacity (hours)
-          </label>
-          <input
-            type="number"
-            step="0.5"
-            min="0.5"
-            value={form.daily_capacity_hours}
-            onChange={(e) => setForm((f) => ({ ...f, daily_capacity_hours: e.target.value }))}
-            className="w-full border rounded px-3 py-2 text-sm"
-            required
-          />
-        </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Less Utilized Max (h)
-            </label>
-            <input
+          <div className="space-y-1.5">
+            <Label htmlFor="dailyCapacity">Daily Working Capacity (hours)</Label>
+            <Input
+              id="dailyCapacity"
               type="number"
               step="0.5"
-              min="0"
-              value={form.less_utilized_max}
-              onChange={(e) => setForm((f) => ({ ...f, less_utilized_max: e.target.value }))}
-              className="w-full border rounded px-3 py-2 text-sm"
+              min="0.5"
+              value={form.daily_capacity_hours}
+              onChange={(e) => setForm((f) => ({ ...f, daily_capacity_hours: e.target.value }))}
               required
             />
-            <p className="text-xs text-gray-400 mt-1">Below this = Less Utilized</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Fully Utilized Max (h)
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={form.fully_utilized_max}
-              onChange={(e) => setForm((f) => ({ ...f, fully_utilized_max: e.target.value }))}
-              className="w-full border rounded px-3 py-2 text-sm"
-              required
-            />
-            <p className="text-xs text-gray-400 mt-1">Up to this = Fully Utilized</p>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="lessMax">Less Utilized Max (h)</Label>
+              <Input
+                id="lessMax"
+                type="number"
+                step="0.5"
+                min="0"
+                value={form.less_utilized_max}
+                onChange={(e) => setForm((f) => ({ ...f, less_utilized_max: e.target.value }))}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Below this = Less Utilized</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="fullyMax">Fully Utilized Max (h)</Label>
+              <Input
+                id="fullyMax"
+                type="number"
+                step="0.5"
+                min="0"
+                value={form.fully_utilized_max}
+                onChange={(e) => setForm((f) => ({ ...f, fully_utilized_max: e.target.value }))}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Up to this = Fully Utilized</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="highlyMax">Highly Utilized Max (h)</Label>
+              <Input
+                id="highlyMax"
+                type="number"
+                step="0.5"
+                min="0"
+                value={form.highly_utilized_max}
+                onChange={(e) => setForm((f) => ({ ...f, highly_utilized_max: e.target.value }))}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Above this = Abnormally Utilized</p>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Highly Utilized Max (h)
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={form.highly_utilized_max}
-              onChange={(e) => setForm((f) => ({ ...f, highly_utilized_max: e.target.value }))}
-              className="w-full border rounded px-3 py-2 text-sm"
-              required
-            />
-            <p className="text-xs text-gray-400 mt-1">Up to this = Highly Utilized, above = Abnormally Utilized</p>
+
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive animate-in fade-in-0 slide-in-from-top-1">
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t pt-4">
+            <span className="text-xs text-muted-foreground">Settings row id: {initialSettings.id}</span>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
+              {mutation.isPending ? "Saving..." : "Save Settings"}
+            </Button>
           </div>
-        </div>
-
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        {success && <p className="text-green-600 text-sm">Settings saved</p>}
-
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-40"
-        >
-          {mutation.isPending ? "Saving..." : "Save Settings"}
-        </button>
-      </form>
-
-      <div className="text-xs text-gray-400">Settings row id: {initialSettings.id}</div>
-    </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

@@ -2,27 +2,18 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { LogIn, LogOut, Loader2, CalendarClock } from "lucide-react";
+import { getAttendanceStatusColor, getAttendanceStatusLabel, type AttendanceStatus } from "@/lib/utils/attendance";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Attendance = {
   sign_in_time: string | null;
   sign_out_time: string | null;
   status: string | null;
-};
-
-const statusLabel: Record<string, string> = {
-  present: "Present",
-  late: "Late",
-  left_early: "Left Early",
-  absent: "Absent",
-  on_leave: "On Leave",
-};
-
-const statusColor: Record<string, string> = {
-  present: "text-green-600 bg-green-50",
-  late: "text-orange-600 bg-orange-50",
-  left_early: "text-orange-600 bg-orange-50",
-  absent: "text-red-600 bg-red-50",
-  on_leave: "text-blue-600 bg-blue-50",
 };
 
 async function fetchAttendance(): Promise<Attendance | null> {
@@ -51,55 +42,76 @@ export default function AttendanceWidget() {
       if (!res.ok) throw new Error(data.error || "Action failed");
       return data.attendance as Attendance;
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, action) => {
       queryClient.setQueryData(["resource-attendance"], updated);
+      toast.success(action === "sign-in" ? "Signed in successfully" : "Signed out successfully");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Action failed");
     },
   });
 
   if (isLoading) {
-    return <div className="bg-white rounded-lg shadow p-4 text-gray-500">Loading...</div>;
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <Skeleton className="h-9 w-24 rounded-lg" />
+          <Skeleton className="h-9 w-24 rounded-lg" />
+        </CardContent>
+      </Card>
+    );
   }
 
+  const status = attendance?.status as AttendanceStatus | null | undefined;
+
   return (
-    <div className="bg-white rounded-lg shadow p-4">
-      <p className="text-sm text-gray-500 mb-2">Attendance</p>
+    <Card className="transition-shadow duration-200 hover:shadow-md">
+      <CardContent className="flex flex-wrap items-center gap-3 p-4">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <CalendarClock className="size-4.5" />
+        </div>
+        <div className="mr-auto">
+          <p className="text-xs font-medium text-muted-foreground">Attendance</p>
+          {status ? (
+            <Badge variant="outline" className={`mt-0.5 ${getAttendanceStatusColor(status)}`}>
+              {getAttendanceStatusLabel(status)}
+            </Badge>
+          ) : (
+            <p className="text-sm text-muted-foreground">Not signed in yet</p>
+          )}
+        </div>
 
-      {attendance?.status && (
-        <span
-          className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-3 ${
-            statusColor[attendance.status] ?? "text-gray-600 bg-gray-50"
-          }`}
-        >
-          {statusLabel[attendance.status] ?? attendance.status}
-        </span>
-      )}
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => mutation.mutate("sign-in")}
-          disabled={mutation.isPending || !!attendance?.sign_in_time}
-          className="bg-green-600 text-white rounded px-3 py-1.5 text-sm disabled:opacity-40"
-        >
-          {attendance?.sign_in_time
-            ? `Signed In (${new Date(attendance.sign_in_time).toLocaleTimeString()})`
-            : "Sign In"}
-        </button>
-        <button
-          onClick={() => mutation.mutate("sign-out")}
-          disabled={mutation.isPending || !attendance?.sign_in_time || !!attendance?.sign_out_time}
-          className="bg-gray-700 text-white rounded px-3 py-1.5 text-sm disabled:opacity-40"
-        >
-          {attendance?.sign_out_time
-            ? `Signed Out (${new Date(attendance.sign_out_time).toLocaleTimeString()})`
-            : "Sign Out"}
-        </button>
-      </div>
-
-      {mutation.isError && (
-        <p className="text-red-600 text-xs mt-2">
-          {mutation.error instanceof Error ? mutation.error.message : "Action failed"}
-        </p>
-      )}
-    </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => mutation.mutate("sign-in")}
+            disabled={mutation.isPending || !!attendance?.sign_in_time}
+            variant={attendance?.sign_in_time ? "secondary" : "default"}
+          >
+            {mutation.isPending && mutation.variables === "sign-in" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <LogIn className="size-4" />
+            )}
+            {attendance?.sign_in_time
+              ? `Signed In · ${new Date(attendance.sign_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : "Sign In"}
+          </Button>
+          <Button
+            onClick={() => mutation.mutate("sign-out")}
+            disabled={mutation.isPending || !attendance?.sign_in_time || !!attendance?.sign_out_time}
+            variant="outline"
+          >
+            {mutation.isPending && mutation.variables === "sign-out" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <LogOut className="size-4" />
+            )}
+            {attendance?.sign_out_time
+              ? `Signed Out · ${new Date(attendance.sign_out_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : "Sign Out"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

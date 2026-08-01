@@ -3,6 +3,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Factory, Loader2, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,52 +49,66 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm space-y-4"
-      >
-        <h1 className="text-xl font-semibold text-center">ROT Workshop Login</h1>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/40 p-4">
+      <div className="pointer-events-none absolute -top-32 -left-24 size-96 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-24 size-96 rounded-full bg-primary/10 blur-3xl" />
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Employee ID</label>
-          <input
-            type="text"
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            placeholder="e.g. WX1487174"
-            required
-          />
-        </div>
+      <Card className="w-full max-w-sm animate-in fade-in-0 zoom-in-95 duration-300 shadow-lg">
+        <CardHeader className="items-center gap-2 text-center">
+          <div className="mb-1 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+            <Factory className="size-5.5" />
+          </div>
+          <h1 className="text-lg font-semibold">ROT Workshop</h1>
+          <p className="text-sm text-muted-foreground">Sign in to your dashboard</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="employeeId">Employee ID</Label>
+              <Input
+                id="employeeId"
+                type="text"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                placeholder="e.g. WX1487174"
+                autoComplete="username"
+                required
+              />
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-            required
-          />
-        </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive animate-in fade-in-0 slide-in-from-top-1">
+                <TriangleAlert className="size-4 shrink-0" />
+                {error}
+              </div>
+            )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white rounded py-2 font-medium disabled:opacity-50"
-        >
-          {loading ? "Logging in..." : "Login"}
-        </button>
+            <Button type="submit" disabled={loading} className="w-full" size="lg">
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              {loading ? "Logging in..." : "Login"}
+            </Button>
 
-        <p className="text-sm text-center">
-          <a href="/set-password" className="text-blue-600 hover:underline">
-            Fist time? Set your Password
-          </a>
-        </p>
-      </form>
+            <p className="text-center text-sm text-muted-foreground">
+              First time?{" "}
+              <a href="/set-password" className="font-medium text-primary hover:underline">
+                Set your password
+              </a>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

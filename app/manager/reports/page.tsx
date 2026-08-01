@@ -3,7 +3,19 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { Clock, ListChecks, Users, CalendarRange } from "lucide-react";
 import { getStatusColor, type UtilizationStatus } from "@/lib/utils/utilization";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Preset = "today" | "yesterday" | "this_week" | "this_month" | "custom";
 type ReportStatus = UtilizationStatus | "Weekend";
@@ -51,6 +63,8 @@ const STATUS_LIST: ReportStatus[] = [
   "Not Filled",
   "Weekend",
 ];
+
+const ALL = "__all__";
 
 async function fetchFilterOptions() {
   const [projRes, resRes, catRes, taskRes] = await Promise.all([
@@ -153,282 +167,359 @@ export default function ManagerReportsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Reports &amp; Historical Analytics</h1>
+      <PageHeader title="Reports & Historical Analytics" description="Filter and drill into historical work-log data" />
 
-      <div className="bg-white rounded-lg shadow p-4 space-y-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Date Range</label>
-            <select
-              value={preset}
-              onChange={(e) => setPreset(e.target.value as Preset)}
-              className="border rounded px-2 py-1.5 text-sm"
-            >
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="this_week">This Week</option>
-              <option value="this_month">This Month</option>
-              <option value="custom">Custom Range</option>
-            </select>
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Date Range</Label>
+              <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
+                <SelectTrigger size="sm" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="this_week">This Week</SelectItem>
+                  <SelectItem value="this_month">This Month</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {preset === "custom" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input
+                    type="date"
+                    value={customFrom}
+                    max={customTo}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="w-auto"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input
+                    type="date"
+                    value={customTo}
+                    min={customFrom}
+                    max={today}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="w-auto"
+                  />
+                </div>
+              </>
+            )}
           </div>
-          {preset === "custom" && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  max={customTo}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="border rounded px-2 py-1.5 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  min={customFrom}
-                  max={today}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="border rounded px-2 py-1.5 text-sm"
-                />
-              </div>
-            </>
-          )}
-        </div>
 
-        <div className="flex flex-wrap gap-3 items-end border-t pt-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Project</label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-end gap-3 border-t pt-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Project</Label>
+              <Select value={projectId || ALL} onValueChange={(v) => setProjectId(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All projects</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Resource</Label>
+              <Select value={resourceId || ALL} onValueChange={(v) => setResourceId(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All resources</SelectItem>
+                  {resources.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Task Category</Label>
+              <Select value={taskCategoryId || ALL} onValueChange={(v) => setTaskCategoryId(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All categories</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Work Type</Label>
+              <Select value={workDayType || ALL} onValueChange={(v) => setWorkDayType(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All</SelectItem>
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="weekend">Weekend</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">NE/Batch</Label>
+              <Select value={neBatch || ALL} onValueChange={(v) => setNeBatch(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All</SelectItem>
+                  {neBatches.map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Utilization Status</Label>
+              <Select value={status || ALL} onValueChange={(v) => setStatus(v === ALL ? "" : (v as string))}>
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All statuses</SelectItem>
+                  {STATUS_LIST.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Resource</label>
-            <select value={resourceId} onChange={(e) => setResourceId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All resources</option>
-              {resources.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Task Category</label>
-            <select value={taskCategoryId} onChange={(e) => setTaskCategoryId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All categories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Work Type</label>
-            <select value={workDayType} onChange={(e) => setWorkDayType(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All</option>
-              <option value="regular">Regular</option>
-              <option value="weekend">Weekend</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">NE/Batch</label>
-            <select value={neBatch} onChange={(e) => setNeBatch(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All</option>
-              {neBatches.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Utilization Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
-              <option value="">All statuses</option>
-              {STATUS_LIST.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded px-3 py-2">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error instanceof Error ? error.message : "Failed to load report"}
         </div>
       )}
 
       {loading ? (
-        <p className="text-gray-500">Loading report...</p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-[68px] rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
       ) : report ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <StatCard label="Total Hours" value={`${report.totals.hours.toFixed(1)}h`} />
-            <StatCard label="Work Log Entries" value={report.totals.entries} />
-            <StatCard label="Resources Active" value={report.totals.uniqueResources} />
-            <StatCard label="Date Range" value={report.from === report.to ? report.from : `${report.from} → ${report.to}`} small />
+        <div className="animate-in fade-in-0 duration-300 space-y-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Total Hours" value={`${report.totals.hours.toFixed(1)}h`} icon={Clock} />
+            <StatCard label="Work Log Entries" value={report.totals.entries} icon={ListChecks} tone="info" />
+            <StatCard label="Resources Active" value={report.totals.uniqueResources} icon={Users} tone="success" />
+            <StatCard
+              label="Date Range"
+              value={
+                <span className="text-sm">
+                  {report.from === report.to ? report.from : `${report.from} → ${report.to}`}
+                </span>
+              }
+              icon={CalendarRange}
+              tone="neutral"
+            />
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-3">Status Breakdown</h2>
-            <div className="flex flex-wrap gap-3">
+            <h2 className="mb-3 text-lg font-semibold">Status Breakdown</h2>
+            <div className="flex flex-wrap gap-2">
               {STATUS_LIST.map((s) => (
-                <span
+                <Badge
                   key={s}
-                  className={`px-3 py-1 rounded text-sm font-medium border ${
-                    s === "Weekend" ? "text-purple-600 bg-purple-50 border-purple-200" : getStatusColor(s as UtilizationStatus)
-                  }`}
+                  variant="outline"
+                  className={
+                    s === "Weekend"
+                      ? "text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-950/40 dark:border-purple-900"
+                      : getStatusColor(s as UtilizationStatus)
+                  }
                 >
                   {s}: {report.statusCounts[s]}
-                </span>
+                </Badge>
               ))}
             </div>
           </div>
 
-          {report.dailyTrend.length > 1 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-3">Daily Trend</h2>
-              <div className="bg-white rounded-lg shadow overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-left text-gray-500">
-                    <tr>
-                      <th className="px-4 py-2">Date</th>
-                      <th className="px-4 py-2">Total Hours</th>
-                      <th className="px-4 py-2">Avg Utilization</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.dailyTrend.map((d) => (
-                      <tr key={d.date} className="border-t">
-                        <td className="px-4 py-2">{d.date}</td>
-                        <td className="px-4 py-2">{d.hours.toFixed(1)}h</td>
-                        <td className="px-4 py-2">{d.averageUtilizationPercent.toFixed(0)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          <Tabs defaultValue="trend">
+            <TabsList>
+              <TabsTrigger value="trend">Daily Trend</TabsTrigger>
+              <TabsTrigger value="projects">Project Utilization</TabsTrigger>
+              <TabsTrigger value="resources">Resource Utilization</TabsTrigger>
+              <TabsTrigger value="entries">
+                Work Log Entries
+                {report.entriesTruncated && (
+                  <Badge variant="outline" className="ml-1 text-amber-600 border-amber-200 bg-amber-50">
+                    truncated
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          <div>
-            <h2 className="text-lg font-semibold mb-3">Project Utilization</h2>
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-gray-500">
-                  <tr>
-                    <th className="px-4 py-2">Project</th>
-                    <th className="px-4 py-2">Hours</th>
-                    <th className="px-4 py-2">Capacity</th>
-                    <th className="px-4 py-2">Utilization</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.perProject.filter((p) => p.hours > 0 || !projectId).map((p) => (
-                    <tr key={p.projectId} className="border-t">
-                      <td className="px-4 py-2 font-medium">{p.projectName}</td>
-                      <td className="px-4 py-2">{p.hours.toFixed(1)}h</td>
-                      <td className="px-4 py-2">{p.capacity.toFixed(0)}h</td>
-                      <td className="px-4 py-2">{p.utilizationPercent.toFixed(0)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-lg font-semibold mb-3">Resource Utilization</h2>
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-gray-500">
-                  <tr>
-                    <th className="px-4 py-2">Resource</th>
-                    <th className="px-4 py-2">Employee ID</th>
-                    <th className="px-4 py-2">Hours</th>
-                    <th className="px-4 py-2">Entries</th>
-                    <th className="px-4 py-2">Avg Utilization</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.perResource.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">No data for this range/filters.</td></tr>
-                  ) : (
-                    report.perResource.map((r) => (
-                      <tr key={r.resourceId} className="border-t">
-                        <td className="px-4 py-2 font-medium">{r.name}</td>
-                        <td className="px-4 py-2 text-gray-500">{r.employeeId ?? "-"}</td>
-                        <td className="px-4 py-2">{r.hours.toFixed(1)}h</td>
-                        <td className="px-4 py-2">{r.entryCount}</td>
-                        <td className="px-4 py-2">{r.averageUtilizationPercent.toFixed(0)}%</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-lg font-semibold mb-3">
-              Work Log Entries
-              {report.entriesTruncated && (
-                <span className="text-xs font-normal text-orange-600 ml-2">
-                  (showing first 5000 — narrow your filters for a full view)
-                </span>
+            <TabsContent value="trend" className="mt-3">
+              {report.dailyTrend.length <= 1 ? (
+                <Card>
+                  <EmptyState title="Not enough data points for a trend view." />
+                </Card>
+              ) : (
+                <Card className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="pl-4">Date</TableHead>
+                        <TableHead>Total Hours</TableHead>
+                        <TableHead className="pr-4">Avg Utilization</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.dailyTrend.map((d) => (
+                        <TableRow key={d.date}>
+                          <TableCell className="pl-4">{d.date}</TableCell>
+                          <TableCell className="tabular-nums">{d.hours.toFixed(1)}h</TableCell>
+                          <TableCell className="pr-4 tabular-nums">{d.averageUtilizationPercent.toFixed(0)}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
               )}
-            </h2>
-            <div className="bg-white rounded-lg shadow overflow-x-auto max-h-[500px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-gray-500 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2">Date</th>
-                    <th className="px-4 py-2">Resource</th>
-                    <th className="px-4 py-2">Project</th>
-                    <th className="px-4 py-2">Task</th>
-                    <th className="px-4 py-2">Category</th>
-                    <th className="px-4 py-2">NE/Batch</th>
-                    <th className="px-4 py-2">Units</th>
-                    <th className="px-4 py-2">Hours</th>
-                    <th className="px-4 py-2">Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.entries.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-400">No entries for this range/filters.</td></tr>
-                  ) : (
-                    report.entries.map((e) => (
-                      <tr key={e.id} className="border-t">
-                        <td className="px-4 py-2">{e.workDate}</td>
-                        <td className="px-4 py-2">{e.resourceName}</td>
-                        <td className="px-4 py-2">{e.projectName}</td>
-                        <td className="px-4 py-2">{e.taskName}</td>
-                        <td className="px-4 py-2 text-gray-500">{e.taskCategoryName ?? "-"}</td>
-                        <td className="px-4 py-2 text-gray-500">{e.neBatch ?? "-"}</td>
-                        <td className="px-4 py-2">{e.unitsCompleted}</td>
-                        <td className="px-4 py-2">{e.totalHours}h</td>
-                        <td className="px-4 py-2 capitalize">{e.workDayType}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-}
+            </TabsContent>
 
-function StatCard({ label, value, small }: { label: string; value: string | number; small?: boolean }) {
-  return (
-    <div className="bg-white rounded-lg shadow p-4">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={small ? "text-sm font-semibold" : "text-xl font-semibold"}>{value}</p>
+            <TabsContent value="projects" className="mt-3">
+              <Card className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-4">Project</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead>Capacity</TableHead>
+                      <TableHead className="pr-4">Utilization</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.perProject
+                      .filter((p) => p.hours > 0 || !projectId)
+                      .map((p) => (
+                        <TableRow key={p.projectId}>
+                          <TableCell className="pl-4 font-medium">{p.projectName}</TableCell>
+                          <TableCell className="tabular-nums">{p.hours.toFixed(1)}h</TableCell>
+                          <TableCell className="tabular-nums">{p.capacity.toFixed(0)}h</TableCell>
+                          <TableCell className="pr-4 tabular-nums">{p.utilizationPercent.toFixed(0)}%</TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="resources" className="mt-3">
+              <Card className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-4">Resource</TableHead>
+                      <TableHead>Employee ID</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead>Entries</TableHead>
+                      <TableHead className="pr-4">Avg Utilization</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.perResource.length === 0 ? (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={5} className="p-0">
+                          <EmptyState title="No data for this range/filters." />
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      report.perResource.map((r) => (
+                        <TableRow key={r.resourceId}>
+                          <TableCell className="pl-4 font-medium">{r.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{r.employeeId ?? "-"}</TableCell>
+                          <TableCell className="tabular-nums">{r.hours.toFixed(1)}h</TableCell>
+                          <TableCell className="tabular-nums">{r.entryCount}</TableCell>
+                          <TableCell className="pr-4 tabular-nums">{r.averageUtilizationPercent.toFixed(0)}%</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="entries" className="mt-3">
+              {report.entriesTruncated && (
+                <p className="mb-2 text-xs text-amber-600">
+                  Showing first 5000 entries — narrow your filters for a full view.
+                </p>
+              )}
+              <Card className="max-h-[500px] overflow-y-auto p-0">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-card">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-4">Date</TableHead>
+                      <TableHead>Resource</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>NE/Batch</TableHead>
+                      <TableHead>Units</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead className="pr-4">Type</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.entries.length === 0 ? (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={9} className="p-0">
+                          <EmptyState title="No entries for this range/filters." />
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      report.entries.map((e) => (
+                        <TableRow key={e.id}>
+                          <TableCell className="pl-4">{e.workDate}</TableCell>
+                          <TableCell>{e.resourceName}</TableCell>
+                          <TableCell>{e.projectName}</TableCell>
+                          <TableCell>{e.taskName}</TableCell>
+                          <TableCell className="text-muted-foreground">{e.taskCategoryName ?? "-"}</TableCell>
+                          <TableCell className="text-muted-foreground">{e.neBatch ?? "-"}</TableCell>
+                          <TableCell>{e.unitsCompleted}</TableCell>
+                          <TableCell className="tabular-nums">{e.totalHours}h</TableCell>
+                          <TableCell className="pr-4 capitalize">{e.workDayType}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      ) : null}
     </div>
   );
 }

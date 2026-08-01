@@ -68,3 +68,37 @@ export function computeAttendanceStatus(params: {
 
   return "pending";
 }
+
+export function getAttendanceStatusColor(status: AttendanceStatus): string {
+  switch (status) {
+    case "present":
+      return "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-900";
+    case "late":
+      return "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-900";
+    case "left_early":
+      return "text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950/40 dark:border-orange-900";
+    case "absent":
+      return "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/40 dark:border-red-900";
+    case "on_leave":
+      return "text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-950/40 dark:border-purple-900";
+    case "pending":
+      return "text-gray-500 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
+  }
+}
+
+export function getAttendanceStatusLabel(status: AttendanceStatus): string {
+  switch (status) {
+    case "present":
+      return "Present";
+    case "late":
+      return "Late";
+    case "left_early":
+      return "Left Early";
+    case "absent":
+      return "Absent";
+    case "on_leave":
+      return "On Leave";
+    case "pending":
+      return "Pending";
+  }
+}

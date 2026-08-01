@@ -3,6 +3,29 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Plus, Search, Pencil, Check, X, Ban, RotateCcw, FolderKanban, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type Project = {
   id: string;
@@ -57,7 +80,6 @@ export default function ManagerProjectsPage() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [mutationError, setMutationError] = useState("");
 
   function invalidate() {
     return queryClient.invalidateQueries({ queryKey: ["manager-projects", today] });
@@ -74,11 +96,12 @@ export default function ManagerProjectsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to create project");
       return data.project;
     },
-    onSuccess: async () => {
+    onSuccess: async (project) => {
       await invalidate();
       setNewProjectName("");
       setShowAddForm(false);
       setCreateError("");
+      toast.success(`Project "${project.name}" created`);
     },
     onError: (err) => setCreateError(err instanceof Error ? err.message : "Failed to create project"),
   });
@@ -98,9 +121,9 @@ export default function ManagerProjectsPage() {
       await invalidate();
       setEditingId(null);
       setEditName("");
-      setMutationError("");
+      toast.success("Project renamed");
     },
-    onError: (err) => setMutationError(err instanceof Error ? err.message : "Failed to update project"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update project"),
   });
 
   const toggleActiveMutation = useMutation({
@@ -119,11 +142,11 @@ export default function ManagerProjectsPage() {
         if (!res.ok) throw new Error(data.error || "Failed to reactivate project");
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, project) => {
       await invalidate();
-      setMutationError("");
+      toast.success(project.active ? `"${project.name}" deactivated` : `"${project.name}" reactivated`);
     },
-    onError: (err) => setMutationError(err instanceof Error ? err.message : "Failed to update project"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update project"),
   });
 
   const filteredProjects = useMemo(() => {
@@ -156,180 +179,233 @@ export default function ManagerProjectsPage() {
 
   function saveEdit(projectId: string) {
     if (!editName.trim()) {
-      setMutationError("Project name cannot be empty");
+      toast.error("Project name cannot be empty");
       return;
     }
     renameMutation.mutate({ projectId, name: editName.trim() });
   }
 
-  if (isLoading) {
-    return <div className="text-gray-500">Loading projects...</div>;
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Projects</h1>
-        <button
-          onClick={() => setShowAddForm((s) => !s)}
-          className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium"
-        >
-          {showAddForm ? "Cancel" : "+ Add Project"}
-        </button>
-      </div>
+      <PageHeader
+        title="Projects"
+        description="Manage workshop projects and view today's utilization"
+        action={
+          <Button onClick={() => setShowAddForm((s) => !s)}>
+            {showAddForm ? <X className="size-4" /> : <Plus className="size-4" />}
+            {showAddForm ? "Cancel" : "Add Project"}
+          </Button>
+        }
+      />
 
-      {(error || mutationError) && (
-        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded px-3 py-2">
-          {error instanceof Error ? error.message : mutationError}
+      {error && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error instanceof Error ? error.message : "Failed to load projects"}
         </div>
       )}
 
       {showAddForm && (
-        <form onSubmit={handleCreateProject} className="bg-white rounded-lg shadow p-4 space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              className="w-full max-w-sm border rounded px-3 py-2 text-sm"
-              placeholder="e.g. Ghana MTN Project"
-              required
-            />
-          </div>
-          {createError && <p className="text-red-600 text-sm">{createError}</p>}
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-40"
-          >
-            {createMutation.isPending ? "Creating..." : "Create Project"}
-          </button>
-        </form>
+        <Card className="animate-in fade-in-0 slide-in-from-top-2 duration-200">
+          <CardContent className="p-4">
+            <form onSubmit={handleCreateProject} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="newProjectName">Project Name</Label>
+                <Input
+                  id="newProjectName"
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="max-w-sm"
+                  placeholder="e.g. Ghana MTN Project"
+                  required
+                  autoFocus
+                />
+              </div>
+              {createError && <p className="text-sm text-destructive">{createError}</p>}
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+                {createMutation.isPending ? "Creating..." : "Create Project"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
-            className="border rounded px-2 py-1.5 text-sm"
-          >
-            <option value="active">Active only</option>
-            <option value="inactive">Inactive only</option>
-            <option value="all">All</option>
-          </select>
-        </div>
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
-          <input
-            type="text"
-            placeholder="Search project name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border rounded px-2 py-1.5 text-sm"
-          />
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active only</SelectItem>
+                <SelectItem value="inactive">Inactive only</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[200px] flex-1 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Search</Label>
+            <div className="relative">
+              <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search project name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-500">
-            <tr>
-              <th className="px-4 py-2">Project</th>
-              <th className="px-4 py-2">Assigned Resources</th>
-              <th className="px-4 py-2">Today&apos;s Utilization</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProjects.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
-                  No projects match the current filters.
-                </td>
-              </tr>
-            )}
-            {filteredProjects.map((project) => {
-              const util = utilizationByProject[project.id];
-              const isEditing = editingId === project.id;
-              const isBusy =
-                (renameMutation.isPending && renameMutation.variables?.projectId === project.id) ||
-                (toggleActiveMutation.isPending && toggleActiveMutation.variables?.id === project.id);
-              return (
-                <tr key={project.id} className={`border-t ${!project.active ? "opacity-50" : ""}`}>
-                  <td className="px-4 py-2 font-medium">
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="border rounded px-2 py-1 text-sm w-full max-w-xs"
-                      />
-                    ) : (
-                      project.name
-                    )}
-                  </td>
-                  <td className="px-4 py-2">{project.assignedResourceCount}</td>
-                  <td className="px-4 py-2">
-                    {util ? (
-                      <span>
-                        {util.hours.toFixed(1)}h / {util.capacity}h ({util.utilizationPercent.toFixed(0)}%)
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">No data</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
-                        project.active
-                          ? "text-green-600 bg-green-50 border-green-200"
-                          : "text-gray-500 bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      {project.active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 rounded-lg" />
+          <Skeleton className="h-64 rounded-lg" />
+        </div>
+      ) : (
+        <Card className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-4">Project</TableHead>
+                <TableHead>Assigned Resources</TableHead>
+                <TableHead>Today&apos;s Utilization</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="pr-4">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredProjects.length === 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={5} className="p-0">
+                    <EmptyState icon={FolderKanban} title="No projects match the current filters." />
+                  </TableCell>
+                </TableRow>
+              )}
+              {filteredProjects.map((project, i) => {
+                const util = utilizationByProject[project.id];
+                const isEditing = editingId === project.id;
+                const isBusy =
+                  (renameMutation.isPending && renameMutation.variables?.projectId === project.id) ||
+                  (toggleActiveMutation.isPending && toggleActiveMutation.variables?.id === project.id);
+                return (
+                  <TableRow
+                    key={project.id}
+                    className={`animate-in fade-in-0 duration-300 ${!project.active ? "opacity-60" : ""}`}
+                    style={{ animationDelay: `${Math.min(i, 20) * 25}ms`, animationFillMode: "backwards" }}
+                  >
+                    <TableCell className="pl-4 font-medium">
                       {isEditing ? (
-                        <>
-                          <button
-                            onClick={() => saveEdit(project.id)}
-                            disabled={isBusy}
-                            className="text-blue-600 text-xs font-medium disabled:opacity-40"
-                          >
-                            Save
-                          </button>
-                          <button onClick={cancelEdit} className="text-gray-500 text-xs font-medium">
-                            Cancel
-                          </button>
-                        </>
+                        <Input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="h-8 max-w-xs"
+                          autoFocus
+                        />
                       ) : (
-                        <button onClick={() => startEdit(project)} className="text-blue-600 text-xs font-medium">
-                          Rename
-                        </button>
+                        project.name
                       )}
-                      <button
-                        onClick={() => toggleActiveMutation.mutate(project)}
-                        disabled={isBusy}
-                        className={`text-xs font-medium disabled:opacity-40 ${
-                          project.active ? "text-red-600" : "text-green-600"
-                        }`}
+                    </TableCell>
+                    <TableCell>{project.assignedResourceCount}</TableCell>
+                    <TableCell>
+                      {util ? (
+                        <span className="tabular-nums">
+                          {util.hours.toFixed(1)}h / {util.capacity}h ({util.utilizationPercent.toFixed(0)}%)
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">No data</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          project.active
+                            ? "text-emerald-600 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-900"
+                            : "text-muted-foreground"
+                        }
                       >
-                        {project.active ? "Deactivate" : "Reactivate"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                        {project.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-4">
+                      <div className="flex items-center gap-1">
+                        {isEditing ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => saveEdit(project.id)}
+                              disabled={isBusy}
+                              aria-label="Save"
+                            >
+                              <Check className="size-4 text-emerald-600" />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" onClick={cancelEdit} aria-label="Cancel">
+                              <X className="size-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => startEdit(project)}
+                            aria-label="Rename"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+
+                        {project.active ? (
+                          <AlertDialog>
+                            <AlertDialogTrigger render={<Button variant="ghost" size="icon-sm" disabled={isBusy} aria-label="Deactivate" />}>
+                              <Ban className="size-4 text-destructive" />
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Deactivate {project.name}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Resources will no longer see this project for new work logs. Existing history
+                                  stays intact and you can reactivate it anytime.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  variant="destructive"
+                                  onClick={() => toggleActiveMutation.mutate(project)}
+                                >
+                                  Deactivate
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => toggleActiveMutation.mutate(project)}
+                            disabled={isBusy}
+                            aria-label="Reactivate"
+                          >
+                            <RotateCcw className="size-4 text-emerald-600" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { computeAttendanceStatus, LATE_GRACE_PERIOD_MINUTES } from "./attendance";
+import {
+  computeAttendanceStatus,
+  getAttendanceStatusColor,
+  getAttendanceStatusLabel,
+  LATE_GRACE_PERIOD_MINUTES,
+  type AttendanceStatus,
+} from "./attendance";
 
 const WORK_DATE = "2026-08-03"; // a Monday
 const SHIFT_START = "11:00:00";
@@ -142,5 +148,20 @@ describe("computeAttendanceStatus", () => {
       now,
     });
     expect(status).toBe("pending");
+  });
+});
+
+describe("getAttendanceStatusColor / getAttendanceStatusLabel", () => {
+  const statuses: AttendanceStatus[] = ["present", "late", "left_early", "absent", "on_leave", "pending"];
+
+  it("returns a distinct color class string for every status", () => {
+    const colors = statuses.map((s) => getAttendanceStatusColor(s));
+    expect(new Set(colors).size).toBe(statuses.length);
+  });
+
+  it("returns a human-readable label for every status", () => {
+    for (const s of statuses) {
+      expect(getAttendanceStatusLabel(s)).toMatch(/^[A-Za-z ]+$/);
+    }
   });
 });

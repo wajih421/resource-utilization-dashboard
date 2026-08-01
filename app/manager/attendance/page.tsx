@@ -3,6 +3,17 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { CalendarOff, Loader2, Users } from "lucide-react";
+import { getAttendanceStatusColor, getAttendanceStatusLabel, type AttendanceStatus } from "@/lib/utils/attendance";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type AttendanceRow = {
   id: string;
@@ -13,24 +24,6 @@ type AttendanceRow = {
   sign_in_time: string | null;
   sign_out_time: string | null;
   status: string;
-};
-
-const statusLabel: Record<string, string> = {
-  present: "Present",
-  late: "Late",
-  left_early: "Left Early",
-  absent: "Absent",
-  on_leave: "On Leave",
-  pending: "Pending",
-};
-
-const statusColor: Record<string, string> = {
-  present: "text-green-600 bg-green-50",
-  late: "text-orange-600 bg-orange-50",
-  left_early: "text-orange-600 bg-orange-50",
-  absent: "text-red-600 bg-red-50",
-  on_leave: "text-blue-600 bg-blue-50",
-  pending: "text-gray-500 bg-gray-50",
 };
 
 async function fetchAttendance(date: string): Promise<AttendanceRow[]> {
@@ -60,9 +53,12 @@ export default function ManagerAttendancePage() {
       if (!res.ok) throw new Error(data.error || "Failed to mark leave");
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, resourceId) => {
       queryClient.invalidateQueries({ queryKey: ["manager-attendance", date] });
+      const name = rows.find((r) => r.id === resourceId)?.name;
+      toast.success(name ? `${name} marked on leave` : "Marked on leave");
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to mark leave"),
   });
 
   const counts = rows.reduce((acc, r) => {
@@ -72,98 +68,103 @@ export default function ManagerAttendancePage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Attendance</h1>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-      </div>
+      <PageHeader
+        title="Attendance"
+        description="Daily sign-in/out status across all resources"
+        action={<Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-auto" />}
+      />
 
-      <div className="flex flex-wrap gap-3 mb-4">
-        {Object.entries(counts).map(([status, count]) => (
-          <span
-            key={status}
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              statusColor[status] ?? "text-gray-600 bg-gray-50"
-            }`}
-          >
-            {statusLabel[status] ?? status}: {count}
-          </span>
-        ))}
-      </div>
-
-      {markLeaveMutation.isError && (
-        <p className="text-red-600 text-sm mb-3">
-          {markLeaveMutation.error instanceof Error ? markLeaveMutation.error.message : "Failed to mark leave"}
-        </p>
+      {Object.keys(counts).length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {Object.entries(counts).map(([status, count]) => (
+            <Badge
+              key={status}
+              variant="outline"
+              className={getAttendanceStatusColor(status as AttendanceStatus)}
+            >
+              {getAttendanceStatusLabel(status as AttendanceStatus)}: {count}
+            </Badge>
+          ))}
+        </div>
       )}
 
       {isLoading ? (
-        <p className="text-gray-500">Loading...</p>
+        <Skeleton className="h-96 rounded-lg" />
       ) : error ? (
-        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load attendance"}</p>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 text-left">
-              <tr>
-                <th className="p-3">Name</th>
-                <th className="p-3">Employee ID</th>
-                <th className="p-3">Shift</th>
-                <th className="p-3">Sign In</th>
-                <th className="p-3">Sign Out</th>
-                <th className="p-3">Status</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="p-3 font-medium">{r.name}</td>
-                  <td className="p-3 text-gray-500">{r.employee_id}</td>
-                  <td className="p-3 text-gray-500">
-                    {r.shift_start && r.shift_end
-                      ? `${r.shift_start.slice(0, 5)} - ${r.shift_end.slice(0, 5)}`
-                      : "-"}
-                  </td>
-                  <td className="p-3">
-                    {r.sign_in_time
-                      ? new Date(r.sign_in_time).toLocaleTimeString()
-                      : "-"}
-                  </td>
-                  <td className="p-3">
-                    {r.sign_out_time
-                      ? new Date(r.sign_out_time).toLocaleTimeString()
-                      : "-"}
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        statusColor[r.status] ?? "text-gray-600 bg-gray-50"
-                      }`}
-                    >
-                      {statusLabel[r.status] ?? r.status}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    {r.status !== "on_leave" && (
-                      <button
-                        onClick={() => markLeaveMutation.mutate(r.id)}
-                        disabled={markLeaveMutation.isPending}
-                        className="text-xs text-blue-600 hover:underline disabled:opacity-40"
-                      >
-                        Mark On Leave
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error instanceof Error ? error.message : "Failed to load attendance"}
         </div>
+      ) : (
+        <Card className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-4">Name</TableHead>
+                <TableHead>Employee ID</TableHead>
+                <TableHead>Shift</TableHead>
+                <TableHead>Sign In</TableHead>
+                <TableHead>Sign Out</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="pr-4"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={7} className="p-0">
+                    <EmptyState icon={Users} title="No resources to display for this date." />
+                  </TableCell>
+                </TableRow>
+              )}
+              {rows.map((r, i) => (
+                <TableRow
+                  key={r.id}
+                  className="animate-in fade-in-0 duration-300"
+                  style={{ animationDelay: `${Math.min(i, 20) * 20}ms`, animationFillMode: "backwards" }}
+                >
+                  <TableCell className="pl-4 font-medium">{r.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.employee_id}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {r.shift_start && r.shift_end ? `${r.shift_start.slice(0, 5)} - ${r.shift_end.slice(0, 5)}` : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {r.sign_in_time
+                      ? new Date(r.sign_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {r.sign_out_time
+                      ? new Date(r.sign_out_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={getAttendanceStatusColor(r.status as AttendanceStatus)}>
+                      {getAttendanceStatusLabel(r.status as AttendanceStatus)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="pr-4">
+                    {r.status !== "on_leave" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => markLeaveMutation.mutate(r.id)}
+                        disabled={markLeaveMutation.isPending && markLeaveMutation.variables === r.id}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        {markLeaveMutation.isPending && markLeaveMutation.variables === r.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <CalendarOff className="size-3.5" />
+                        )}
+                        Mark On Leave
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </div>
   );

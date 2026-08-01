@@ -2,8 +2,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Clock, ListChecks, Gauge, ClipboardX } from "lucide-react";
 import { getUtilizationStatus, getStatusColor } from "@/lib/utils/utilization";
-import AttendanceWidget from "../../../components/attendance/AttendanceWidget";
+import AttendanceWidget from "@/components/attendance/AttendanceWidget";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type WorkLog = {
   id: string;
@@ -39,67 +47,92 @@ export default function ResourceDashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">My Dashboard</h1>
-      <p className="text-gray-500 mb-6">{today}</p>
+      <PageHeader title="My Dashboard" description={today} />
 
       {isLoading ? (
-        <p className="text-gray-500">Loading...</p>
+        <div className="space-y-6">
+          <Skeleton className="h-20 rounded-xl" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Skeleton className="h-20 rounded-xl" />
+            <Skeleton className="h-20 rounded-xl" />
+            <Skeleton className="h-20 rounded-xl" />
+          </div>
+          <Skeleton className="h-48 rounded-xl" />
+        </div>
       ) : error ? (
-        <p className="text-red-600">{error instanceof Error ? error.message : "Failed to load dashboard"}</p>
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">
+            {error instanceof Error ? error.message : "Failed to load dashboard"}
+          </CardContent>
+        </Card>
       ) : (
-        <>
+        <div className="animate-in fade-in-0 duration-300">
           <div className="mb-6">
             <AttendanceWidget />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-4">
-              <p className="text-sm text-gray-500">Productive Hours Today</p>
-              <p className="text-2xl font-semibold">{totalHours.toFixed(2)}h</p>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-4">
-              <p className="text-sm text-gray-500">Tasks Submitted</p>
-              <p className="text-2xl font-semibold">{logs.length}</p>
-            </div>
-
-            <div className={`rounded-lg shadow p-4 border ${statusColor}`}>
-              <p className="text-sm opacity-80">Status</p>
-              <p className="text-lg font-semibold">{status}</p>
-            </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="Productive Hours Today" value={`${totalHours.toFixed(2)}h`} icon={Clock} />
+            <StatCard label="Tasks Submitted" value={logs.length} icon={ListChecks} tone="info" />
+            <Card className="py-0">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg border ${statusColor}`}>
+                  <Gauge className="size-4.5" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Status</p>
+                  <p className="text-lg font-semibold">{status}</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          <h2 className="text-lg font-semibold mb-2">Today&apos;s Submitted Work</h2>
-
-          {logs.length === 0 ? (
-            <p className="text-gray-500">Abhi tak koi work submit nahi kiya aaj.</p>
-          ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100 text-left">
-                  <tr>
-                    <th className="p-3">Project</th>
-                    <th className="p-3">Task</th>
-                    <th className="p-3">Units</th>
-                    <th className="p-3">Hours</th>
-                    <th className="p-3">Day Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((log) => (
-                    <tr key={log.id} className="border-t">
-                      <td className="p-3">{log.projects?.name ?? "-"}</td>
-                      <td className="p-3">{log.tasks?.name ?? "-"}</td>
-                      <td className="p-3">{log.units_completed}</td>
-                      <td className="p-3">{log.total_hours}h</td>
-                      <td className="p-3 capitalize">{log.work_day_type}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+          <Card>
+            <CardHeader>
+              <CardTitle>Today&apos;s Submitted Work</CardTitle>
+            </CardHeader>
+            <CardContent className="px-0 pt-0">
+              {logs.length === 0 ? (
+                <EmptyState
+                  icon={ClipboardX}
+                  title="Abhi tak koi work submit nahi kiya aaj."
+                  description="Submit Work page se apna kaam log karein."
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-4">Project</TableHead>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Units</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead className="pr-4">Day Type</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log, i) => (
+                      <TableRow
+                        key={log.id}
+                        className="animate-in fade-in-0 duration-300"
+                        style={{ animationDelay: `${i * 40}ms`, animationFillMode: "backwards" }}
+                      >
+                        <TableCell className="pl-4">{log.projects?.name ?? "-"}</TableCell>
+                        <TableCell>{log.tasks?.name ?? "-"}</TableCell>
+                        <TableCell>{log.units_completed}</TableCell>
+                        <TableCell className="tabular-nums">{log.total_hours}h</TableCell>
+                        <TableCell className="pr-4">
+                          <Badge variant={log.work_day_type === "weekend" ? "outline" : "secondary"} className="capitalize">
+                            {log.work_day_type}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

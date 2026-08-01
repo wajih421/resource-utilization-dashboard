@@ -3,6 +3,17 @@
 
 import { Fragment, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { ChevronDown, ChevronLeft, ChevronRight, History } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type AuditEntry = {
   id: string;
@@ -19,6 +30,7 @@ type AuditLogResponse = { entries: AuditEntry[]; total: number };
 
 const ENTITY_TYPES = ["tasks", "task_categories", "projects", "resource", "attendance", "utilization_settings"];
 const PAGE_SIZE = 50;
+const ALL = "__all__";
 
 async function fetchAuditLog(params: { offset: number; entityType: string; action: string }): Promise<AuditLogResponse> {
   const search = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(params.offset) });
@@ -52,125 +64,147 @@ export default function ManagerAuditLogPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Audit Log</h1>
-      <p className="text-gray-600 text-sm">
-        Every manager change that affects tasks, projects, assignments, attendance overrides, or utilization
-        settings is recorded here — who changed what, and the before/after values.
-      </p>
+      <PageHeader
+        title="Audit Log"
+        description="Every manager change that affects tasks, projects, assignments, attendance overrides, or utilization settings — who changed what, and the before/after values."
+      />
 
-      <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Entity Type</label>
-          <select
-            value={entityType}
-            onChange={(e) => changeFilter(setEntityType, e.target.value)}
-            className="border rounded px-2 py-1.5 text-sm"
-          >
-            <option value="">All</option>
-            {ENTITY_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Action contains</label>
-          <input
-            type="text"
-            value={action}
-            onChange={(e) => changeFilter(setAction, e.target.value)}
-            placeholder="e.g. update_task"
-            className="border rounded px-2 py-1.5 text-sm"
-          />
-        </div>
-      </div>
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Entity Type</Label>
+            <Select
+              value={entityType || ALL}
+              onValueChange={(v) => changeFilter(setEntityType, v === ALL ? "" : (v as string))}
+            >
+              <SelectTrigger size="sm" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {ENTITY_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Action contains</Label>
+            <Input
+              type="text"
+              value={action}
+              onChange={(e) => changeFilter(setAction, e.target.value)}
+              placeholder="e.g. update_task"
+              className="w-48"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded px-3 py-2">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error instanceof Error ? error.message : "Failed to load audit log"}
         </div>
       )}
 
       {isLoading ? (
-        <p className="text-gray-500">Loading audit log...</p>
+        <Skeleton className="h-96 rounded-lg" />
       ) : (
         <>
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500">
-                <tr>
-                  <th className="px-4 py-2">When</th>
-                  <th className="px-4 py-2">Manager</th>
-                  <th className="px-4 py-2">Action</th>
-                  <th className="px-4 py-2">Entity</th>
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
+          <Card className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-4">When</TableHead>
+                  <TableHead>Manager</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead className="pr-4"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {entries.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">No audit entries match these filters.</td></tr>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={5} className="p-0">
+                      <EmptyState icon={History} title="No audit entries match these filters." />
+                    </TableCell>
+                  </TableRow>
                 ) : (
-                  entries.map((entry) => (
-                    <Fragment key={entry.id}>
-                      <tr className="border-t">
-                        <td className="px-4 py-2 text-gray-500">{new Date(entry.createdAt).toLocaleString()}</td>
-                        <td className="px-4 py-2">{entry.managerEmail}</td>
-                        <td className="px-4 py-2 font-medium">{entry.action}</td>
-                        <td className="px-4 py-2 text-gray-500">{entry.entityType}</td>
-                        <td className="px-4 py-2">
-                          <button
-                            onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-                            className="text-blue-600 text-xs font-medium"
-                          >
-                            {expandedId === entry.id ? "Hide" : "Details"}
-                          </button>
-                        </td>
-                      </tr>
-                      {expandedId === entry.id && (
-                        <tr className="border-t bg-gray-50">
-                          <td colSpan={5} className="px-4 py-3">
-                            <div className="grid grid-cols-2 gap-4 text-xs">
-                              <div>
-                                <p className="font-medium text-gray-500 mb-1">Old Value</p>
-                                <pre className="bg-white border rounded p-2 overflow-x-auto">
-                                  {JSON.stringify(entry.oldValue, null, 2) ?? "null"}
-                                </pre>
+                  entries.map((entry, i) => {
+                    const isExpanded = expandedId === entry.id;
+                    return (
+                      <Fragment key={entry.id}>
+                        <TableRow
+                          className="animate-in fade-in-0 cursor-pointer duration-300"
+                          style={{ animationDelay: `${Math.min(i, 20) * 15}ms`, animationFillMode: "backwards" }}
+                          onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                        >
+                          <TableCell className="pl-4 whitespace-normal text-muted-foreground">
+                            {new Date(entry.createdAt).toLocaleString()}
+                          </TableCell>
+                          <TableCell>{entry.managerEmail}</TableCell>
+                          <TableCell className="font-medium">{entry.action}</TableCell>
+                          <TableCell className="text-muted-foreground">{entry.entityType}</TableCell>
+                          <TableCell className="pr-4">
+                            <Button variant="ghost" size="sm" className="text-muted-foreground">
+                              {isExpanded ? "Hide" : "Details"}
+                              <ChevronDown className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-180")} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={5} className="bg-muted/30 p-0">
+                              <div className="grid grid-cols-1 gap-4 p-4 text-xs animate-in fade-in-0 slide-in-from-top-1 duration-200 sm:grid-cols-2">
+                                <div>
+                                  <p className="mb-1 font-medium text-muted-foreground">Old Value</p>
+                                  <pre className="overflow-x-auto rounded-lg border bg-card p-2 whitespace-pre-wrap">
+                                    {JSON.stringify(entry.oldValue, null, 2) ?? "null"}
+                                  </pre>
+                                </div>
+                                <div>
+                                  <p className="mb-1 font-medium text-muted-foreground">New Value</p>
+                                  <pre className="overflow-x-auto rounded-lg border bg-card p-2 whitespace-pre-wrap">
+                                    {JSON.stringify(entry.newValue, null, 2) ?? "null"}
+                                  </pre>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-500 mb-1">New Value</p>
-                                <pre className="bg-white border rounded p-2 overflow-x-auto">
-                                  {JSON.stringify(entry.newValue, null, 2) ?? "null"}
-                                </pre>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })
                 )}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Card>
 
-          <div className="flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               Showing {entries.length === 0 ? 0 : offset + 1}-{offset + entries.length} of {total}
             </span>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
                 disabled={offset === 0}
-                className="px-3 py-1 border rounded disabled:opacity-40"
               >
+                <ChevronLeft className="size-4" />
                 Previous
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setOffset((o) => o + PAGE_SIZE)}
                 disabled={offset + PAGE_SIZE >= total}
-                className="px-3 py-1 border rounded disabled:opacity-40"
               >
                 Next
-              </button>
+                <ChevronRight className="size-4" />
+              </Button>
             </div>
           </div>
         </>

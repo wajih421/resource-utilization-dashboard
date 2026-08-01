@@ -1,31 +1,15 @@
 // app/resource/layout.tsx
-import Link from "next/link";
-import { LogoutButton } from "@/components/auth/LogoutButton";
+import { AppShell } from "@/components/layout/AppShell";
+import { createClient } from "@/lib/supabase/server";
+import { getSidebarUser } from "@/lib/supabase/current-user";
 
-const navItems = [
-  { href: "/resource/dashboard", label: "Dashboard" },
-  { href: "/resource/submit-work", label: "Submit Work" },
-];
+export default async function ResourceLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient();
+  const user = await getSidebarUser(supabase);
 
-export default function ResourceLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-56 bg-gray-900 text-white p-4 flex flex-col justify-between">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold mb-4">ROT Workshop</h2>
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block px-3 py-2 rounded hover:bg-gray-700 text-sm"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-        <LogoutButton />
-      </aside>
-      <main className="flex-1 bg-gray-50 p-6">{children}</main>
-    </div>
+    <AppShell role="resource" user={user}>
+      {children}
+    </AppShell>
   );
 }

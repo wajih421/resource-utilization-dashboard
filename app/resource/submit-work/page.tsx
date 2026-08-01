@@ -3,6 +3,22 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Loader2, TriangleAlert, Calculator, FolderX } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Project = { id: string; name: string };
 type Task = {
@@ -35,7 +51,6 @@ export default function SubmitWorkPage() {
   const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [workDayType, setWorkDayType] = useState<"regular" | "weekend">("regular");
   const [unitsCompleted, setUnitsCompleted] = useState("1");
-  const [successMsg, setSuccessMsg] = useState("");
 
   const { data: projects = [], isLoading: loadingProjects, error: projectsError } = useQuery({
     queryKey: ["resource-projects"],
@@ -66,10 +81,13 @@ export default function SubmitWorkPage() {
       return data;
     },
     onSuccess: (data) => {
-      setSuccessMsg(`Submit ho gaya! Total Hours: ${data.totalHours}`);
+      toast.success("Submit ho gaya!", { description: `Total Hours: ${data.totalHours}h` });
       setTaskId("");
       setUnitsCompleted("1");
       queryClient.invalidateQueries({ queryKey: ["resource-today-summary"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Submit nahi ho paya");
     },
   });
 
@@ -86,11 +104,7 @@ export default function SubmitWorkPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSuccessMsg("");
-
-    if (!projectId || !taskId) {
-      return;
-    }
+    if (!projectId || !taskId) return;
     submitMutation.mutate();
   }
 
@@ -98,113 +112,124 @@ export default function SubmitWorkPage() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-semibold mb-4">Submit Work</h1>
+      <PageHeader title="Submit Work" description="Log today's completed task units against a project" />
 
       {loadingProjects ? (
-        <p className="text-gray-500">Loading projects...</p>
+        <Card>
+          <CardContent className="space-y-3 p-6">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </CardContent>
+        </Card>
       ) : projects.length === 0 ? (
-        <p className="text-red-600">
-          Tumhe koi project assign nahi hai abhi tak. Manager se contact karo.
-        </p>
+        <Card>
+          <EmptyState
+            icon={FolderX}
+            title="Tumhe koi project assign nahi hai abhi tak."
+            description="Manager se contact karo taake project assign ho sake."
+          />
+        </Card>
       ) : (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Date</label>
-            <input
-              type="date"
-              value={workDate}
-              onChange={(e) => setWorkDate(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
+        <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="workDate">Date</Label>
+                  <Input
+                    id="workDate"
+                    type="date"
+                    value={workDate}
+                    onChange={(e) => setWorkDate(e.target.value)}
+                    required
+                  />
+                </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Work Day Type</label>
-            <select
-              value={workDayType}
-              onChange={(e) => setWorkDayType(e.target.value as "regular" | "weekend")}
-              className="w-full border rounded px-3 py-2"
-            >
-              <option value="regular">Regular Working Day</option>
-              <option value="weekend">Weekend</option>
-            </select>
-          </div>
+                <div className="space-y-1.5">
+                  <Label>Work Day Type</Label>
+                  <Select value={workDayType} onValueChange={(v) => setWorkDayType(v as "regular" | "weekend")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="regular">Regular Working Day</SelectItem>
+                      <SelectItem value="weekend">Weekend</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Project</label>
-            <select
-              value={projectId}
-              onChange={(e) => handleProjectChange(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              required
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              <div className="space-y-1.5">
+                <Label>Project</Label>
+                <Select value={projectId} onValueChange={(v) => handleProjectChange(v as string)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="-- Select Project --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Task</label>
-            <select
-              value={taskId}
-              onChange={(e) => setTaskId(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              disabled={!projectId || loadingTasks}
-              required
-            >
-              <option value="">
-                {loadingTasks ? "Loading tasks..." : "-- Select Task --"}
-              </option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.task_categories?.name ? `${t.task_categories.name} - ` : ""}
-                  {t.name} ({t.default_hours}h)
-                </option>
-              ))}
-            </select>
-          </div>
+              <div className="space-y-1.5">
+                <Label>Task</Label>
+                <Select value={taskId} onValueChange={(v) => setTaskId(v as string)} disabled={!projectId || loadingTasks}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={loadingTasks ? "Loading tasks..." : "-- Select Task --"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tasks.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.task_categories?.name ? `${t.task_categories.name} - ` : ""}
+                        {t.name} ({t.default_hours}h)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Units Completed</label>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              value={unitsCompleted}
-              onChange={(e) => setUnitsCompleted(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="units">Units Completed</Label>
+                <Input
+                  id="units"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={unitsCompleted}
+                  onChange={(e) => setUnitsCompleted(e.target.value)}
+                  required
+                />
+              </div>
 
-          {selectedTask && (
-            <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-sm">
-              Default Hours: <strong>{selectedTask.default_hours}h</strong> × Units:{" "}
-              <strong>{unitsCompleted || 0}</strong> = Total:{" "}
-              <strong>{calculatedHours}h</strong>
-            </div>
-          )}
+              {selectedTask && (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm animate-in fade-in-0 slide-in-from-top-1">
+                  <Calculator className="size-4 shrink-0 text-primary" />
+                  <span>
+                    Default Hours: <strong>{selectedTask.default_hours}h</strong> × Units:{" "}
+                    <strong>{unitsCompleted || 0}</strong> = Total: <strong>{calculatedHours}h</strong>
+                  </span>
+                </div>
+              )}
 
-          {error && (
-            <p className="text-red-600 text-sm">
-              {error instanceof Error ? error.message : "Something went wrong"}
-            </p>
-          )}
-          {successMsg && <p className="text-green-600 text-sm">{successMsg}</p>}
+              {error && (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive animate-in fade-in-0 slide-in-from-top-1">
+                  <TriangleAlert className="size-4 shrink-0" />
+                  {error instanceof Error ? error.message : "Something went wrong"}
+                </div>
+              )}
 
-          <button
-            type="submit"
-            disabled={submitMutation.isPending}
-            className="w-full bg-blue-600 text-white rounded py-2 font-medium disabled:opacity-50"
-          >
-            {submitMutation.isPending ? "Submitting..." : "Submit Work"}
-          </button>
-        </form>
+              <Button type="submit" disabled={submitMutation.isPending} className="w-full" size="lg">
+                {submitMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+                {submitMutation.isPending ? "Submitting..." : "Submit Work"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

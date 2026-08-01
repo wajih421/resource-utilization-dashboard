@@ -1,5 +1,10 @@
 // components/tables/ResourceUtilizationTable.tsx
+import { Users } from "lucide-react";
 import { getStatusColor, type UtilizationStatus } from "@/lib/utils/utilization";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/layout/EmptyState";
 
 export type ResourceUtilizationRow = {
   resourceId: string;
@@ -20,44 +25,51 @@ export default function ResourceUtilizationTable({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-gray-500 text-sm p-4">No resources to display.</p>
+      <Card>
+        <EmptyState icon={Users} title="No resources to display" />
+      </Card>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-gray-500">
-          <tr>
-            <th className="px-4 py-2">Name</th>
-            <th className="px-4 py-2">Employee ID</th>
-            <th className="px-4 py-2">Hours</th>
-            <th className="px-4 py-2">Utilization %</th>
-            <th className="px-4 py-2">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.resourceId} className="border-t">
-              <td className="px-4 py-2 font-medium">{row.name}</td>
-              <td className="px-4 py-2 text-gray-500">{row.employeeId}</td>
-              <td className="px-4 py-2">{row.hours.toFixed(1)}h</td>
-              <td className="px-4 py-2">{row.utilizationPercent.toFixed(0)}%</td>
-              <td className="px-4 py-2">
-                <span
-                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
+    <Card className="p-0">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="pl-4">Name</TableHead>
+            <TableHead>Employee ID</TableHead>
+            <TableHead>Hours</TableHead>
+            <TableHead>Utilization %</TableHead>
+            <TableHead className="pr-4">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow
+              key={row.resourceId}
+              className="animate-in fade-in-0 duration-300"
+              style={{ animationDelay: `${Math.min(i, 20) * 25}ms`, animationFillMode: "backwards" }}
+            >
+              <TableCell className="pl-4 font-medium">{row.name}</TableCell>
+              <TableCell className="text-muted-foreground">{row.employeeId}</TableCell>
+              <TableCell className="tabular-nums">{row.hours.toFixed(1)}h</TableCell>
+              <TableCell className="tabular-nums">{row.utilizationPercent.toFixed(0)}%</TableCell>
+              <TableCell className="pr-4">
+                <Badge
+                  variant="outline"
+                  className={
                     row.status === "Weekend"
-                      ? "text-purple-600 bg-purple-50 border-purple-200"
+                      ? "text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-950/40 dark:border-purple-900"
                       : getStatusColor(row.status as UtilizationStatus)
-                  }`}
+                  }
                 >
                   {row.status}
-                </span>
-              </td>
-            </tr>
+                </Badge>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
