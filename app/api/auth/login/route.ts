@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       needsPasswordSetup: !profile.has_custom_password,
     });
   } catch (err) {
+    console.error("auth/login route error:", err);
     return NextResponse.json(
       { error: "Some unexpected error happened! Try again " },
       { status: 500 }

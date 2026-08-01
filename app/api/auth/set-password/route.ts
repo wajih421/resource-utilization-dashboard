@@ -1,17 +1,10 @@
 // app/api/auth/set-password/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Service-role client - only used server-side, bypasses RLS
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
+    const supabaseAdmin = createServiceRoleClient();
     const { employeeId, newPassword } = await request.json();
 
     if (!employeeId || !newPassword) {
